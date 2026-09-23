@@ -1,0 +1,9 @@
+{
+  "name": "SIGRH – Ministère de la Fonction Publique",
+  "short_name": "SIGRH",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#1e40af",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
