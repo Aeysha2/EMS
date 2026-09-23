@@ -106,9 +106,9 @@ sequenceDiagram
 - **Base de données** : PostgreSQL, qui stocke toutes les informations dans des tables.
 - **Sécurité** : mots de passe chiffrés (bcrypt) et jeton de connexion (JWT).
 
-Le détail des choix techniques se trouve dans le document 2 (cahier des charges), et le fonctionnement complet dans les documents 3 à 7.
+Le détail des choix techniques se trouve dans le document 2 (cahier des charges), et le fonctionnement complet dans les documents 3 à 8.
 
-## 1.8 Les 7 documents
+## 1.8 Les 8 documents
 
 | N° | Document | À lire pour… |
 | --- | --- | --- |
@@ -119,6 +119,7 @@ Le détail des choix techniques se trouve dans le document 2 (cahier des charges
 | 5 | Base de données PostgreSQL | Installer, comprendre et utiliser la base |
 | 6 | API REST | Connaître et tester toutes les adresses du serveur |
 | 7 | Pourquoi chaque fichier | Savoir quels fichiers créer, comment les nommer et dans quel ordre |
+| 8 | API REST avec Postman | Tester toutes les routes avec Postman, grâce à une collection prête à importer |
 
 ---
 Projet SIGRH (EMS) — documentation.

@@ -185,7 +185,7 @@
 | CA5 | Un dossier suit son circuit | Enregistrer, transmettre jusqu'à la dernière étape, clôturer : l'historique montre chaque étape |
 | CA6 | Un agent n'accède pas aux dossiers qui ne le concernent pas | Adresse directe `/projects/1` en agent non concerné : « introuvable » |
 | CA7 | L'application est utilisable sur mobile | Largeur 390 px : menu repliable, aucun défilement horizontal |
-| CA8 | Les 33 tests passent | `npm test` avec `TEST_DATABASE_URL` défini |
+| CA8 | Les 34 tests passent | `npm test` avec `TEST_DATABASE_URL` défini |
 
 ---
 Projet SIGRH (EMS) — documentation.

@@ -79,7 +79,7 @@ flowchart LR
 | `package.json` | Raccourcis pour lancer le serveur et le client depuis la racine (`npm run server`, `npm run client`, `npm run seed`) | Dès qu'on a deux sous-projets et qu'on est fatigué de faire `cd` |
 | `.gitignore` | Empêche d'envoyer sur GitHub `node_modules/` (très lourd, se réinstalle avec `npm install`), `dist/` (se reconstruit) et `.env` (**secrets**) | **Toujours**, avant le premier commit |
 | `README.md` | La page d'accueil du dépôt sur GitHub : présentation, installation, comptes de démo | Tout projet partagé |
-| `docs/` | Ces 7 documents | Pour pouvoir expliquer et refaire le projet |
+| `docs/` | Les 8 documents et la collection Postman (`docs/postman/`) | Pour pouvoir expliquer, tester et refaire le projet |
 | `.github/workflows/ci.yml` | Lance les tests et le build sur GitHub à chaque envoi | Dès qu'il y a des tests automatiques |
 
 ## 7.6 Fichiers du serveur (`server/`)
@@ -222,7 +222,9 @@ EMS/
 │   ├── 04-commandes-et-code-expliques.md
 │   ├── 05-base-de-donnees-postgresql.md
 │   ├── 06-api-rest.md
-│   └── 07-pourquoi-chaque-fichier.md
+│   ├── 07-pourquoi-chaque-fichier.md
+│   ├── 08-api-rest-postman.md
+│   └── postman/SIGRH-EMS.postman_collection.json
 ├── server/
 │   ├── .env.example            (+ .env, non versionné)
 │   ├── package.json

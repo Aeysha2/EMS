@@ -11,7 +11,7 @@ et suivi de leur circuit de traitement** (type de dépôt, type de demande, agen
 | Base de données | PostgreSQL 16 (driver `pg`, requêtes paramétrées, contraintes et index) |
 | Sécurité | JWT, bcrypt, contrôle d'accès par rôle (RBAC), helmet, limitation du débit sur l'authentification |
 | Documents | PDFKit : bulletins de paie et récépissés de dépôt téléchargeables |
-| Qualité | 33 tests d'intégration (`node:test`) et CI GitHub Actions |
+| Qualité | 34 tests d'intégration (`node:test`) et CI GitHub Actions |
 
 
 ## 📚 Documentation
@@ -25,6 +25,7 @@ et suivi de leur circuit de traitement** (type de dépôt, type de demande, agen
 | 5 | [Base de données PostgreSQL](docs/05-base-de-donnees-postgresql.md) |
 | 6 | [API REST](docs/06-api-rest.md) |
 | 7 | [Pourquoi chaque fichier](docs/07-pourquoi-chaque-fichier.md) |
+| 8 | [API REST avec Postman](docs/08-api-rest-postman.md) + [collection à importer](docs/postman/SIGRH-EMS.postman_collection.json) |
 
 ---
 

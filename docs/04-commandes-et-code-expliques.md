@@ -38,7 +38,7 @@ Ce document explique d'abord **toutes les commandes** du terminal, puis **chaque
 | `npm run client` | `EMS/` | Lance Vite (= `npm run dev` dans `client/`) sur http://localhost:5173 |
 | `npm run build` | `EMS/` ou `client/` | Fabrique la version finale optimisée du site dans `client/dist/` |
 | `npm run preview` | `client/` | Affiche localement la version construite par `build` |
-| `npm test` | `server/` | Lance les 33 tests d'intégration (nécessite `TEST_DATABASE_URL`) |
+| `npm test` | `server/` | Lance les 34 tests d'intégration (nécessite `TEST_DATABASE_URL`) |
 | `Ctrl + C` | Terminal qui tourne | Arrête le serveur ou Vite |
 
 ### Git
@@ -1533,6 +1533,7 @@ L'enregistrement :
 *`server/controllers/projectController.js`, lignes 239 à 284 :*
 
 ```js
+
 /** POST /api/projects — register a new dossier (enregistrement) */
 export const createProject = async (req, res) => {
   const data = pick(req.body, PROJECT_FIELDS);
@@ -1578,7 +1579,6 @@ export const createProject = async (req, res) => {
 
   await logActivity(req.user.id, 'Enregistrement de dossier', 'project', project.id, `${project.reference} – ${project.title}`);
   res.status(201).json(await findProject(project.id));
-};
 ```
 
 1. Vérifications : objet, demandeur, type de demande, type de dépôt, date de dépôt pas dans le futur.
@@ -1587,9 +1587,10 @@ export const createProject = async (req, res) => {
 
 Le moteur du circuit :
 
-*`server/controllers/projectController.js`, lignes 303 à 413 :*
+*`server/controllers/projectController.js`, lignes 303 à 414 :*
 
 ```js
+
 /**
  * POST /api/projects/:id/actions — move the dossier through its circuit
  * { action: assign|advance|return|request_documents|resume|reject|close|comment, comment?, agent_id? }
@@ -1850,24 +1851,25 @@ import { protect } from '../middleware/auth.js';
 
 const router = Router();
 
-// Brute-force protection on credential endpoints
+// Brute-force protection on credential endpoints: only failed attempts count,
+// so users who log in normally are never locked out
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: Number(process.env.AUTH_RATE_LIMIT || 20),
+  skipSuccessfulRequests: true,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  message: { message: 'Trop de tentatives, réessayez dans quelques minutes' },
+  message: { message: 'Trop de tentatives échouées, réessayez dans quelques minutes' },
 });
 
 router.post('/register', authLimiter, register);
 router.post('/login', authLimiter, login);
 router.get('/me', protect, me);
 router.put('/password', protect, changePassword);
-
-export default router;
 ```
 
-- `rateLimit` : 20 tentatives par tranche de 15 minutes et par adresse IP. Au-delà, erreur 429. Cela empêche de deviner un mot de passe en en essayant des milliers.
+- `rateLimit` : 20 tentatives **échouées** par tranche de 15 minutes et par adresse IP. Au-delà, erreur 429. Cela empêche de deviner un mot de passe en en essayant des milliers.
+- `skipSuccessfulRequests: true` : les connexions réussies ne sont pas comptées. Un utilisateur qui se connecte normalement, même souvent, n'est jamais bloqué.
 
 ## 4.26 `server/utils/migrate.js` et `server/utils/seed.js`
 

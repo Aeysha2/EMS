@@ -1,5 +1,7 @@
 # 6. L'API REST — comment l'utiliser étape par étape
 
+> Pour tester avec **Postman** et une collection prête à importer (106 requêtes avec tests automatiques), voir le **document 8**.
+
 L'**API** est l'ensemble des adresses que le serveur met à disposition. Le site React ne touche jamais la base de données directement : il envoie des requêtes à l'API, qui vérifie les droits, applique les règles et répond en **JSON**.
 
 ## 6.1 Principe d'une requête
@@ -239,7 +241,7 @@ Connectez-vous d'abord avec `agent@ems.gov` / `Agent@123` (étape 2), puis :
 | `GET /api/employees` avec le jeton de l'agent | Pas de champ `salary` dans les résultats |
 | `POST /api/auth/register` avec `"role": "admin"` | Le compte créé a quand même `"role": "employee"` |
 | Jeton modifié d'un seul caractère | 401 `Session invalide ou expirée` |
-| 21 connexions ratées en 15 minutes | 429 `Trop de tentatives` |
+| 21 connexions ratées en 15 minutes | 429 `Trop de tentatives échouées` (les connexions réussies ne comptent pas) |
 
 ## 6.4 Codes de réponse
 
