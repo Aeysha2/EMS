@@ -13,6 +13,19 @@ et suivi de leur circuit de traitement** (type de dépôt, type de demande, agen
 | Documents | PDFKit : bulletins de paie et récépissés de dépôt téléchargeables |
 | Qualité | 33 tests d'intégration (`node:test`) et CI GitHub Actions |
 
+
+## 📚 Documentation
+
+| N° | Document |
+|---|---|
+| 1 | [Présentation du projet](docs/01-presentation-du-projet.md) |
+| 2 | [Cahier des charges](docs/02-cahier-des-charges.md) |
+| 3 | [Guide de réalisation](docs/03-guide-realisation.md) |
+| 4 | [Commandes et code expliqués](docs/04-commandes-et-code-expliques.md) |
+| 5 | [Base de données PostgreSQL](docs/05-base-de-donnees-postgresql.md) |
+| 6 | [API REST](docs/06-api-rest.md) |
+| 7 | [Pourquoi chaque fichier](docs/07-pourquoi-chaque-fichier.md) |
+
 ---
 
 ## 📂 Structure
