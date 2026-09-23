@@ -310,6 +310,14 @@ describe('projects (dossiers) circuit', () => {
     assert.equal((await api('POST', `/projects/${id}/actions`, { action: 'advance' }, 'admin')).status, 400);
   });
 
+  test('"my dossiers" lists only those assigned to me', async () => {
+    const jean = await api('GET', '/projects?scope=mine', null, 'jean');
+    assert.equal(jean.status, 200);
+    const rh = await api('GET', '/projects?scope=mine', null, 'rh');
+    assert.equal(rh.status, 200);
+    assert.equal(rh.body.data.length, 0);
+  });
+
   test('unrelated employee cannot see the dossier', async () => {
     assert.equal((await api('GET', `/projects/${id}`, null, 'pre')).status, 404);
   });

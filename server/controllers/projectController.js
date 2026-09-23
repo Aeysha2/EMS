@@ -164,12 +164,13 @@ export const listProjects = async (req, res) => {
   const where = [];
   const add = (sql, v) => { params.push(v); where.push(sql.replaceAll('?', `$${params.length}`)); };
 
-  if (!isHRorAdmin(req.user) || req.query.scope === 'mine') {
+  if (req.query.scope === 'mine') {
+    // "Mes dossiers à traiter": only those assigned to me
+    add('p.agent_id = ?', req.user.employee_id ?? -1);
+  } else if (!isHRorAdmin(req.user)) {
     params.push(req.user.employee_id ?? -1, req.user.id, req.user.managed_departments);
     const n = params.length;
-    where.push(req.query.scope === 'mine'
-      ? `p.agent_id = $${n - 2}`
-      : `(p.agent_id = $${n - 2} OR p.created_by = $${n - 1} OR p.department_id = ANY($${n})
+    where.push(`(p.agent_id = $${n - 2} OR p.created_by = $${n - 1} OR p.department_id = ANY($${n})
          OR EXISTS (SELECT 1 FROM project_history h WHERE h.project_id = p.id
                      AND (h.user_id = $${n - 1} OR h.to_agent = $${n - 2} OR h.from_agent = $${n - 2})))`);
   }
