@@ -6,8 +6,12 @@ export const toISODate = (d = new Date()) => {
   return `${y}-${m}-${day}`;
 };
 
-export const isValidISODate = (s) =>
-  typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`));
+/** Date ISO réelle (refuse le 31 février, le 29 février d'une année non bissextile…). */
+export const isValidISODate = (s) => {
+  if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const d = new Date(`${s}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+};
 
 export const addDays = (iso, n) => {
   const d = new Date(`${iso}T00:00:00Z`);

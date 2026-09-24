@@ -1,7 +1,7 @@
 {
-  "name": "ems-server",
+  "name": "sigrh-server",
   "version": "1.0.0",
-  "description": "Employee Management System API (Express + PostgreSQL)",
+  "description": "SIGRH — API (Express + PostgreSQL)",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -17,12 +17,14 @@
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^18.0.3",
+    "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "express-rate-limit": "^8.7.0",
     "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
     "pdfkit": "^0.20.2",
-    "pg": "^8.23.0"
+    "pg": "^8.23.0",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"

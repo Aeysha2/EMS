@@ -27,40 +27,39 @@ export function AuthProvider({ children }) {
     return () => window.removeEventListener('ems:logout', onLogout);
   }, [refresh]);
 
+  const openSession = (res) => {
+    setToken(res.token);
+    setUser(res.user);
+    return res.user;
+  };
+
+  /** Étape 1 : mot de passe. Renvoie { mfa_required, mfa_token } si un code est attendu. */
   const login = async (email, password) => {
     const res = await api.post('/auth/login', { email, password });
-    setToken(res.token);
-    setUser(res.user);
-    return res.user;
+    if (res.mfa_required) return res;
+    return { user: openSession(res) };
   };
 
-  const register = async (data) => {
-    const res = await api.post('/auth/register', data);
-    setToken(res.token);
-    setUser(res.user);
-    return res.user;
-  };
+  /** Étape 2 : code de l'application d'authentification. */
+  const verifyMfa = async (mfaToken, code) => ({ user: openSession(await api.post('/auth/mfa/verify', { mfa_token: mfaToken, code })) });
 
-  const logout = () => {
-    setToken(null);
-    setUser(null);
-  };
+  const activate = async (data) => openSession(await api.post('/auth/activate', data));
+
+  const logout = () => { setToken(null); setUser(null); };
 
   const value = useMemo(() => {
-    const isHR = user?.role === 'admin' || user?.role === 'hr';
+    const role = user?.role;
     return {
-      user,
-      loading,
-      login,
-      register,
-      logout,
-      refresh,
-      isAdmin: user?.role === 'admin',
-      isHR,
-      isManager: (user?.managedDepartments?.length ?? 0) > 0,
-      canManage: isHR || (user?.managedDepartments?.length ?? 0) > 0,
+      user, setUser, loading, login, verifyMfa, activate, logout, refresh,
+      isAgent: role === 'agent',
+      isDRH: role === 'gestionnaire_rh',
+      isPilotage: role === 'pilotage',
+      isDSI: role === 'admin_dsi',
+      isChef: !!user?.isChef,
+      isCentral: role === 'pilotage' || role === 'admin_dsi',
+      hasDossier: !!user?.employee_id,
     };
-  }, [user, loading, refresh]);
+  }, [user, refresh]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

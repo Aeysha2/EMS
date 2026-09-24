@@ -4,30 +4,28 @@ export const notFound = (req, res) => {
 
 // eslint-disable-next-line no-unused-vars
 export const errorHandler = (err, req, res, next) => {
-  // PostgreSQL error codes → HTTP
+  // Codes d'erreur PostgreSQL → HTTP
   const pgMap = {
     23505: [409, 'Cet enregistrement existe déjà (doublon)'],
-    23503: [400, 'Référence invalide (élément lié introuvable)'],
+    23503: [400, 'Référence invalide (élément lié introuvable ou encore utilisé)'],
     23514: [400, 'Valeur non autorisée'],
     '22P02': [400, 'Format de donnée invalide'],
     22007: [400, 'Date invalide'],
     22008: [400, 'Date invalide'],
+    P0001: [403, 'Opération interdite'],
   };
   if (err.code && pgMap[err.code]) {
     const [status, message] = pgMap[err.code];
     return res.status(status).json({ message, detail: err.detail });
   }
-  if (err.type === 'entity.too.large') {
-    return res.status(413).json({ message: 'Fichier ou requête trop volumineux' });
-  }
-  if (err.type === 'entity.parse.failed') {
-    return res.status(400).json({ message: 'JSON invalide' });
-  }
+  if (err.type === 'entity.too.large') return res.status(413).json({ message: 'Fichier ou requête trop volumineux' });
+  if (err.type === 'entity.parse.failed') return res.status(400).json({ message: 'JSON invalide' });
 
   const status = err.status || 500;
   if (status >= 500) console.error('Unhandled server error:', err);
   res.status(status).json({
     message: status >= 500 ? 'Erreur interne du serveur' : err.message,
+    code: typeof err.code === 'string' && !/^\d/.test(err.code) ? err.code : undefined,
     error: process.env.NODE_ENV === 'development' && status >= 500 ? err.message : undefined,
   });
 };

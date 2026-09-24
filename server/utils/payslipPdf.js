@@ -1,80 +1,56 @@
 import PDFDocument from 'pdfkit';
 
-const MONTHS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août',
-  'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+const MONTHS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre',
+  'Novembre', 'Décembre'];
+const fmt = (n) => `${Math.round(Number(n || 0)).toLocaleString('fr-FR').replace(/ | /g, ' ')} FCFA`;
 
-const fmt = (n) =>
-  `${Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).replace(/ | /g, ' ')} ${process.env.CURRENCY || 'FCFA'}`;
-
-/** Stream a salary slip PDF to `res`. */
+/** Bulletin de paie dématérialisé (données transmises par la Solde). */
 export const streamPayslip = (res, slip) => {
   const doc = new PDFDocument({ size: 'A4', margin: 50 });
-  const period = `${MONTHS[slip.period_month - 1]} ${slip.period_year}`;
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition',
-    `attachment; filename="bulletin-${slip.employee_code}-${slip.period_year}-${String(slip.period_month).padStart(2, '0')}.pdf"`);
+    `attachment; filename="bulletin-${slip.sigrh_id}-${slip.period_year}-${String(slip.period_month).padStart(2, '0')}.pdf"`);
   doc.pipe(res);
-
-  const org = process.env.ORG_NAME || 'Ministère de la Fonction Publique';
-  doc.fontSize(16).fillColor('#1e3a8a').text(org, { align: 'center' });
-  doc.fontSize(10).fillColor('#555').text('Direction des Ressources Humaines', { align: 'center' });
+  doc.rect(50, 40, 165, 4).fill('#00853F').rect(215, 40, 165, 4).fill('#FDEF42').rect(380, 40, 165, 4).fill('#E31B23');
+  doc.fillColor('#000').moveDown(0.5);
+  doc.fontSize(12).text('RÉPUBLIQUE DU SÉNÉGAL', 50, 55, { align: 'center' });
+  doc.fontSize(8).fillColor('#555').text('Un Peuple – Un But – Une Foi', { align: 'center' });
+  doc.moveDown(0.8).fontSize(14).fillColor('#00602d')
+    .text(`BULLETIN DE SOLDE — ${MONTHS[slip.period_month - 1].toUpperCase()} ${slip.period_year}`, { align: 'center' });
+  doc.fontSize(8).fillColor('#777')
+    .text(slip.source === 'simulation' ? 'Simulation SIGRH — document non contractuel'
+      : 'Données transmises par la Direction de la Solde — document dématérialisé SIGRH', { align: 'center' });
   doc.moveDown();
-  doc.fontSize(14).fillColor('#000').text(`BULLETIN DE PAIE — ${period.toUpperCase()}`, { align: 'center' });
-  doc.moveDown();
-
-  const d = slip.details || {};
-  const infoTop = doc.y;
-  doc.fontSize(10);
-  [
-    ['Agent', slip.full_name],
-    ['Identifiant', slip.employee_code],
-    ['Matricule', slip.matricule || '—'],
-    ['Fonction', slip.designation || '—'],
-  ].forEach(([k, v], i) => doc.text(`${k} : ${v}`, 50, infoTop + i * 15));
-  [
-    ['Département', slip.department_name || '—'],
-    ['Grade', slip.grade || '—'],
-    ['Jours ouvrés', d.workingDays ?? '—'],
-    ['Statut', slip.status === 'paid' ? 'Payé' : 'Traité'],
-  ].forEach(([k, v], i) => doc.text(`${k} : ${v}`, 320, infoTop + i * 15));
-  doc.y = infoTop + 75;
-
+  const top = doc.y;
+  doc.fontSize(10).fillColor('#000');
+  [['Agent', slip.full_name], ['Identifiant SIGRH', slip.sigrh_id], ['Matricule de solde', slip.matricule_solde || '—'],
+    ['Fonction', slip.fonction || '—']].forEach(([k, v], i) => doc.text(`${k} : ${v}`, 50, top + i * 15));
+  [['Institution', slip.institution_name || '—'], ['Structure', slip.structure_name || '—'],
+    ['Corps / hiérarchie', `${slip.corps_name || '—'} / ${slip.hierarchie || '—'}`],
+    ['Grade / échelon', `${slip.grade || '—'} / ${slip.echelon || '—'}`]].forEach(([k, v], i) => doc.text(`${k} : ${v}`, 300, top + i * 15, { width: 245 }));
+  doc.y = top + 75;
   const row = (label, amount, opts = {}) => {
     const y = doc.y;
     if (opts.fill) doc.rect(50, y - 3, 495, 18).fill(opts.fill).fillColor('#000');
-    doc.font(opts.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(10)
-      .text(label, 60, y, { width: 300 })
+    doc.font(opts.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(10).text(label, 60, y, { width: 300 })
       .text(amount, 360, y, { width: 175, align: 'right' });
     doc.y = y + 18;
   };
-
-  const section = (title) => {
-    doc.moveDown(0.5);
-    doc.font('Helvetica-Bold').fontSize(11).fillColor('#1e3a8a').text(title, 50);
-    doc.fillColor('#000').moveDown(0.3);
-  };
-
-  section('Gains');
+  const d = slip.details || {};
+  doc.font('Helvetica-Bold').fillColor('#00602d').text('Éléments de rémunération', 50).fillColor('#000').moveDown(0.3);
   row('Salaire de base', fmt(slip.basic));
-  row('Indemnité de logement', fmt(d.housing));
-  row('Indemnité de transport', fmt(d.transport));
-  row(`Heures supplémentaires (${d.overtimeHours ?? 0} h)`, fmt(slip.overtime_pay));
-  row('Primes / bonus', fmt(slip.bonuses));
-  row('SALAIRE BRUT', fmt(slip.gross), { bold: true, fill: '#eef2ff' });
-
-  section('Retenues');
-  row(`Retenue congé sans solde (${d.unpaidLeaveDays ?? 0} j)`, fmt(d.unpaidLeave));
-  row('Cotisation sociale / retraite', fmt(d.socialSecurity));
-  row('Autres retenues', fmt(d.otherDeductions));
-  row(`Impôt sur le revenu (base imposable ${fmt(d.taxable)})`, fmt(slip.tax));
-  row('TOTAL RETENUES', fmt(Number(slip.deductions) + Number(slip.tax)), { bold: true, fill: '#fef2f2' });
-
+  if (d.housing !== undefined) row('Indemnité de logement', fmt(d.housing));
+  if (d.transport !== undefined) row('Indemnité de transport', fmt(d.transport));
+  if (d.housing === undefined) row('Primes et indemnités', fmt(slip.allowances));
+  if (Number(slip.bonuses)) row('Primes exceptionnelles', fmt(slip.bonuses));
+  row('BRUT', fmt(slip.gross), { bold: true, fill: '#e8f5ee' });
+  doc.moveDown(0.5);
+  doc.font('Helvetica-Bold').fillColor('#00602d').text('Retenues', 50).fillColor('#000').moveDown(0.3);
+  row('Retenues (pension, cotisations, autres)', fmt(slip.deductions));
+  row('Impôt sur le revenu', fmt(slip.tax));
   doc.moveDown();
-  row('NET À PAYER', fmt(slip.net), { bold: true, fill: '#dcfce7' });
-
-  doc.moveDown(3);
-  doc.font('Helvetica').fontSize(8).fillColor('#777')
-    .text(`Document généré le ${new Date().toLocaleString('fr-FR')} — Réf. PAY-${slip.id}`, 50, doc.y, { align: 'center' })
-    .text('Bulletin à conserver sans limitation de durée.', { align: 'center' });
+  row('NET À PAYER', fmt(slip.net), { bold: true, fill: '#FDEF42' });
+  doc.moveDown(3).font('Helvetica').fontSize(8).fillColor('#777')
+    .text(`Édité le ${new Date().toLocaleString('fr-FR')} — Réf. BUL-${slip.id}`, 50, doc.y, { align: 'center' });
   doc.end();
 };

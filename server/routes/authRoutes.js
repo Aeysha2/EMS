@@ -1,13 +1,12 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { changePassword, login, me, register } from '../controllers/authController.js';
+import * as c from '../controllers/authController.js';
 import { protect } from '../middleware/auth.js';
 
 const router = Router();
 
-// Brute-force protection on credential endpoints: only failed attempts count,
-// so users who log in normally are never locked out
-const authLimiter = rateLimit({
+// Anti force brute : seules les tentatives échouées sont comptées
+const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: Number(process.env.AUTH_RATE_LIMIT || 20),
   skipSuccessfulRequests: true,
@@ -16,9 +15,13 @@ const authLimiter = rateLimit({
   message: { message: 'Trop de tentatives échouées, réessayez dans quelques minutes' },
 });
 
-router.post('/register', authLimiter, register);
-router.post('/login', authLimiter, login);
-router.get('/me', protect, me);
-router.put('/password', protect, changePassword);
+router.post('/login', limiter, c.login);
+router.post('/mfa/verify', limiter, c.mfaVerify);
+router.post('/activate', limiter, c.activate);
+router.get('/me', protect, c.me);
+router.put('/password', protect, c.changePassword);
+router.post('/mfa/setup', protect, c.mfaSetup);
+router.post('/mfa/enable', protect, c.mfaEnable);
+router.post('/mfa/disable', protect, c.mfaDisable);
 
 export default router;
