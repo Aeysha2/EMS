@@ -1,292 +1,206 @@
-# 6. L'API REST — comment l'utiliser étape par étape
+# Document 6 — API REST : référence des routes
 
-> Pour tester avec **Postman** et une collection prête à importer (106 requêtes avec tests automatiques), voir le **document 8**.
+Adresse de base en développement : `http://localhost:5002/api`. Toutes les réponses sont en JSON (sauf PDF, Excel et CSV).
 
-L'**API** est l'ensemble des adresses que le serveur met à disposition. Le site React ne touche jamais la base de données directement : il envoie des requêtes à l'API, qui vérifie les droits, applique les règles et répond en **JSON**.
+## 1. Conventions
 
-## 6.1 Principe d'une requête
+| Élément | Règle |
+|---|---|
+| Authentification | En-tête `Authorization: Bearer <jeton>` obtenu par `POST /auth/login` (ou `/auth/mfa/verify`) |
+| Systèmes partenaires | En-tête `X-API-Key: <clé>` sur `/interop/v1/*` |
+| Corps de requête | JSON, en-tête `Content-Type: application/json` |
+| Dates | Format ISO `AAAA-MM-JJ` |
+| Pièces jointes | JSON `{ name, mime_type, content }`, avec `content` en base64 (data URL acceptée) ; 8 Mo maximum |
+| Pagination | `?page=1&limit=20` ; réponse `{ data, total, page, limit }` |
+| Erreurs | `{ "message": "…" }` et parfois `code` (ex. `MFA_SETUP_REQUIRED`) |
 
-Une requête contient :
+| Code HTTP | Signification |
+|---|---|
+| 200 / 201 / 202 | Succès / créé / reçu pour traitement |
+| 400 | Donnée invalide (message explicite) |
+| 401 | Non connecté, jeton expiré, clé d’API absente ou invalide |
+| 403 | Connecté, mais hors de votre périmètre ou de votre profil |
+| 404 | Introuvable (ou invisible pour vous) |
+| 409 | Conflit : doublon, demande déjà clôturée, solde insuffisant |
+| 429 | Trop de tentatives de connexion |
 
-| Élément | Exemple | Rôle |
-| --- | --- | --- |
-| **Méthode** | `GET`, `POST`, `PUT`, `PATCH`, `DELETE` | Ce qu'on veut faire |
-| **Adresse** | `http://localhost:5002/api/leaves` | Sur quoi |
-| **Paramètres d'adresse** | `?status=pending&page=2` | Filtres |
-| **En-têtes** | `Authorization: Bearer eyJhbGci...` et `Content-Type: application/json` | Qui je suis ; format du corps |
-| **Corps** (pour POST, PUT, PATCH) | `{"leave_type":"paid","start_date":"2026-10-05","end_date":"2026-10-09"}` | Les données envoyées |
-
-| Méthode | Sens | Exemple |
-| --- | --- | --- |
-| `GET` | Lire | `GET /api/employees` |
-| `POST` | Créer, ou déclencher une action | `POST /api/leaves`, `POST /api/payroll/generate` |
-| `PUT` | Modifier (fiche complète ou plusieurs champs) | `PUT /api/employees/5` |
-| `PATCH` | Modifier une partie (un statut) | `PATCH /api/leaves/12/review` |
-| `DELETE` | Supprimer | `DELETE /api/departments/3` |
-
-**Le parcours d'une requête dans le serveur** :
-```mermaid
-flowchart LR
-  A[Requête] --> B[helmet / cors / json / sanitize]
-  B --> C{Route connue ?}
-  C -- non --> N[404]
-  C -- oui --> D[protect : jeton valide ?]
-  D -- non --> U[401]
-  D -- oui --> E[authorize : bon rôle ?]
-  E -- non --> F[403]
-  E -- oui --> G[Contrôleur : règles + SQL]
-  G -- erreur --> H[errorHandler : 400 / 404 / 409]
-  G -- succès --> I[200 / 201 + JSON]
-```
-
-## 6.2 Liste complète des routes
-
-Légende des accès : **Public** = sans connexion ; **Connecté** = tout utilisateur connecté ; **RH** = rôles `hr` et `admin` ; **Admin** = rôle `admin` seulement ; **Chef** = chef de service du département concerné.
-
-### Authentification — `/api/auth`
-| Méthode | Adresse | Accès | Corps | Réponse |
-| --- | --- | --- | --- | --- |
-| POST | `/api/auth/register` | Public | `{ name, email, password, phone?, matricule? }` | 201 `{ token, user }` |
-| POST | `/api/auth/login` | Public | `{ email, password }` | 200 `{ token, user }` |
-| GET | `/api/auth/me` | Connecté | — | `{ user }` |
-| PUT | `/api/auth/password` | Connecté | `{ currentPassword, newPassword }` | `{ message }` |
-
-### Employés — `/api/employees`
-| Méthode | Adresse | Accès | Détails |
-| --- | --- | --- | --- |
-| GET | `/api/employees` | Connecté (champs filtrés selon le rôle) | Paramètres : `q`, `department`, `status`, `designation`, `joinedFrom`, `joinedTo`, `minSalary`, `maxSalary` (RH), `sort` (`name`, `code`, `joining`, `salary`, `department`, `designation`), `order` (`asc`/`desc`), `page`, `limit`. Réponse : `{ data, total, page, limit }` |
-| GET | `/api/employees/me` | Connecté | Ma fiche complète |
-| PUT | `/api/employees/me` | Connecté | `{ phone, address }` |
-| GET | `/api/employees/:id` | Connecté (champs filtrés) | Une fiche |
-| POST | `/api/employees` | RH | `{ full_name, email, department_id, designation, grade, salary, date_of_joining, … , createAccount?, password?, role? }` |
-| PUT | `/api/employees/:id` | RH | Champs à modifier (dont les soldes de congés) |
-| DELETE | `/api/employees/:id` | Admin | Désactive le compte, puis supprime la fiche |
-
-### Départements — `/api/departments`
-| Méthode | Adresse | Accès | Corps |
-| --- | --- | --- | --- |
-| GET | `/api/departments` | Connecté | — (avec `employee_count` et `monthly_salary_cost`) |
-| GET | `/api/departments/:id` | Connecté | — (avec `members`) |
-| POST | `/api/departments` | RH | `{ name, code, description, budget, manager_id }` |
-| PUT | `/api/departments/:id` | RH | Idem |
-| DELETE | `/api/departments/:id` | Admin | — |
-
-### Présences — `/api/attendance`
-| Méthode | Adresse | Accès | Détails |
-| --- | --- | --- | --- |
-| POST | `/api/attendance/check-in` | Connecté | `{ latitude?, longitude?, note? }` → 201 ; déjà pointé → **409** |
-| POST | `/api/attendance/check-out` | Connecté | → 200 avec `working_hours` et `overtime` |
-| GET | `/api/attendance/today` | Connecté | Mon pointage du jour, ou `null` |
-| GET | `/api/attendance` | Connecté | `from`, `to`, `status`, `employee`, `department`, `scope=team`. RH : tous ; chef : son équipe ; agent : lui-même |
-| GET | `/api/attendance/report` | Connecté | `year`, `month`, `department` → rapport mensuel |
-| POST | `/api/attendance` | RH | Saisie ou correction : `{ employee_id, work_date, check_in, check_out, status?, note? }` |
-| POST | `/api/attendance/mark-absent` | RH | `{ date }` → `{ absent, onLeave }` et notifications |
-
-### Congés — `/api/leaves`
-| Méthode | Adresse | Accès | Détails |
-| --- | --- | --- | --- |
-| GET | `/api/leaves` | Connecté | `scope` (`mine`, `team`, `all`), `status`, `type`, `employee`, `department` |
-| GET | `/api/leaves/balance` | Connecté | Mes soldes ; `?employee=` pour RH et chef |
-| POST | `/api/leaves` | Connecté | `{ leave_type, start_date, end_date, reason }` |
-| PATCH | `/api/leaves/:id/review` | RH ou Chef | `{ action: "approve" \| "reject", comment }` |
-| PATCH | `/api/leaves/:id/cancel` | Demandeur ou RH | — |
-
-### Paie — `/api/payroll`
-| Méthode | Adresse | Accès | Détails |
-| --- | --- | --- | --- |
-| GET | `/api/payroll` | Connecté (agent : ses bulletins) | `year`, `month`, `employee`, `department` |
-| GET | `/api/payroll/rules` | Connecté | Les taux utilisés |
-| POST | `/api/payroll/preview` | RH | `{ employee_id, year, month, bonus, otherDeductions }` → calcul sans enregistrement |
-| POST | `/api/payroll/generate` | RH | `{ year, month, employee_ids?, bonuses?: { "12": 50000 }, deductions?: {...}, overwrite? }` → `{ generated, skipped }` |
-| GET | `/api/payroll/:id` | Propriétaire ou RH | Un bulletin |
-| GET | `/api/payroll/:id/pdf` | Propriétaire ou RH | **Fichier PDF** |
-| PATCH | `/api/payroll/:id/pay` | RH | Marquer payé |
-| DELETE | `/api/payroll/:id` | RH | Seulement si non payé |
-
-### Performance — `/api/performance`
-| Méthode | Adresse | Accès | Détails |
-| --- | --- | --- | --- |
-| GET | `/api/performance` | Connecté | `scope` (`mine`, `team`, `all`), `employee` |
-| POST | `/api/performance` | RH ou Chef | `{ employee_id, period, review_date, rating, feedback, goals: [{ title, due, progress }], status: "completed" \| "scheduled" }` |
-| PUT | `/api/performance/:id` | RH ou Chef (tout) ; agent évalué (avancement des objectifs seulement) | Champs à modifier |
-| DELETE | `/api/performance/:id` | RH | — |
-| GET | `/api/performance/insights/:employeeId` | L'agent lui-même, RH ou Chef | `{ score, level, metrics, recommendations }` |
-
-### Dossiers — `/api/projects`
-| Méthode | Adresse | Accès | Détails |
-| --- | --- | --- | --- |
-| GET | `/api/projects/config` | Connecté | `{ depositTypes, requestTypes, circuits }` |
-| POST / PUT | `/api/projects/request-types[/:id]` | RH | `{ code, name, sla_days, required_documents, description, is_active }` |
-| POST / PUT | `/api/projects/deposit-types[/:id]` | RH | `{ name, description, is_active }` |
-| PUT | `/api/projects/circuit` | RH | `{ request_type_id: null \| id, steps: [{ name, department_id, expected_days }] }` |
-| GET | `/api/projects` | Connecté (selon la visibilité) | `q`, `status`, `type`, `deposit`, `agent`, `department`, `step`, `priority`, `overdue=1`, `from`, `to`, `scope=mine`, `page`, `limit` |
-| POST | `/api/projects` | Connecté | `{ title, description, request_type_id, deposit_type_id, applicant_name, applicant_matricule, applicant_phone, applicant_email, applicant_structure, deposit_date, priority, agent_id? }` |
-| GET | `/api/projects/:id` | Selon la visibilité | Le dossier, avec `circuit`, `history`, `documents` et `permissions` |
-| PUT | `/api/projects/:id` | Agent traitant, chef, RH ou auteur | Modifier les informations d'enregistrement |
-| POST | `/api/projects/:id/actions` | Selon l'action | `{ action, comment?, agent_id? }` (voir 6.3, étape 7) |
-| GET | `/api/projects/:id/receipt` | Selon la visibilité | **Récépissé PDF** |
-| POST | `/api/projects/:id/documents` | Selon la visibilité | `{ name, mime_type, content: "base64…" }` |
-| GET | `/api/projects/:id/documents/:docId` | Selon la visibilité | Le fichier |
-
-### Divers — `/api`
-| Méthode | Adresse | Accès | Détails |
-| --- | --- | --- | --- |
-| GET | `/api/health` | Public | `{ status: "online", database: "ok" }` |
-| GET | `/api/dashboard` | Connecté | `{ me, announcements, org? }` (`org` pour RH, admin et chef) |
-| GET | `/api/notifications` | Connecté | `{ data, unread }` |
-| PATCH | `/api/notifications/:id/read` | Connecté | `:id` = un numéro, ou `all` |
-| GET | `/api/announcements` | Connecté | — |
-| POST | `/api/announcements` | RH | `{ title, content, event_date? }` → notifie tout le monde |
-| DELETE | `/api/announcements/:id` | RH | — |
-| GET | `/api/calendar?from=&to=` | Connecté | `{ events, leaves, reviews, deadlines }` |
-| GET | `/api/reports/departments` | RH | Rapport par département |
-| GET | `/api/reports/payroll?year=` | RH | Paie par mois et par département |
-| GET | `/api/reports/leaves?year=` | RH | Congés par type et par département |
-| GET | `/api/reports/projects?from=&to=` | RH | Dossiers par statut, type, dépôt, agent et mois |
-| GET | `/api/reports/analytics` | RH | Ancienneté, recrutements, grades, statuts |
-| GET | `/api/users` | Admin | Tous les comptes |
-| PATCH | `/api/users/:id` | Admin | `{ role?, is_active?, password? }` |
-| GET | `/api/activity?limit=` | RH | Journal d'audit |
-
-## 6.3 Tester avec Thunder Client, étape par étape
-
-**Thunder Client** est une extension de VS Code (onglet *Extensions* → rechercher « Thunder Client » → *Install*). Postman fonctionne de la même façon.
-
-Le serveur doit tourner (`npm run server`) et les données de démo doivent être chargées (`npm run seed`).
-
-### Étape 1 — Vérifier que le serveur répond
-- **New Request** → méthode `GET` → adresse `http://localhost:5002/api/health` → **Send**.
-- Réponse attendue : `200` et `{"status":"online","database":"ok",...}`.
-
-### Étape 2 — Se connecter et récupérer le jeton
-- `POST` `http://localhost:5002/api/auth/login`
-- Onglet **Body** → **JSON** :
-```json
-{ "email": "rh@ems.gov", "password": "Rh@12345" }
-```
-- **Send** → la réponse contient `"token": "eyJhbGciOi..."`. **Copier cette valeur** (sans les guillemets).
-
-### Étape 3 — Utiliser le jeton
-Pour toutes les autres requêtes : onglet **Auth** → **Bearer** → coller le jeton.
-(Cela revient à ajouter l'en-tête `Authorization: Bearer <jeton>`.)
-
-> **Astuce** : dans Thunder Client, créez une **Collection** « EMS » et mettez le jeton dans l'onglet *Auth* de la collection. Toutes les requêtes de la collection l'utiliseront.
-
-### Étape 4 — Lire des données
-- `GET http://localhost:5002/api/employees?q=kone&sort=name` → la liste filtrée.
-- `GET http://localhost:5002/api/departments`
-- `GET http://localhost:5002/api/dashboard`
-
-### Étape 5 — Tester l'anti-doublon de pointage
-Connectez-vous d'abord avec `agent@ems.gov` / `Agent@123` (étape 2), puis :
-- `POST http://localhost:5002/api/attendance/check-in`, corps `{}` → **201**.
-- Renvoyez **la même** requête → **409** : `"Vous avez déjà pointé votre arrivée aujourd'hui"`.
-
-### Étape 6 — Demander puis valider un congé
-1. En agent : `POST /api/leaves`
-```json
-{ "leave_type": "casual", "start_date": "2026-11-02", "end_date": "2026-11-04", "reason": "Famille" }
-```
-   → 201. Notez l'`id` renvoyé (par exemple `7`).
-2. En RH : `PATCH /api/leaves/7/review`
-```json
-{ "action": "approve", "comment": "Accordé" }
-```
-3. En agent : `GET /api/leaves/balance` → `casual_balance` a diminué de 3.
-
-### Étape 7 — Faire avancer un dossier dans le circuit
-1. En RH : `POST /api/projects`
-```json
-{
-  "title": "Demande d'avancement",
-  "request_type_id": 3,
-  "deposit_type_id": 1,
-  "applicant_name": "Moussa Test",
-  "priority": "normal"
-}
-```
-   → 201 avec `"reference": "MFP-2026-00010"` et un `id` (par exemple `10`).
-2. `POST /api/projects/10/actions`, en changeant la valeur de `action` à chaque fois :
-```json
-{ "action": "advance", "comment": "Dossier recevable", "agent_id": 5 }
-```
-
-| `action` | Champs obligatoires | Effet |
-| --- | --- | --- |
-| `assign` | `agent_id` | Change l'agent traitant |
-| `advance` | — (`agent_id` facultatif) | Étape suivante |
-| `return` | `comment` | Étape précédente |
-| `request_documents` | `comment` | Statut « pièces demandées » |
-| `resume` | — | Retour « en cours » |
-| `reject` | `comment` | Dossier rejeté |
-| `close` | — | Clôture (dernière étape seulement) |
-| `comment` | `comment` | Ajoute un commentaire à l'historique |
-
-3. `GET /api/projects/10` → regarder `current_step` et `history`.
-
-### Étape 8 — Générer la paie et télécharger un PDF
-1. En RH : `POST /api/payroll/generate`
-```json
-{ "year": 2026, "month": 10, "bonuses": { "5": 50000 } }
-```
-   → `{"generated":16,"skipped":0}`. Renvoyez-la : `generated` vaut 0, car les bulletins existent déjà.
-2. `GET /api/payroll?year=2026&month=10` → notez un `id`.
-3. `GET /api/payroll/<id>/pdf` → Thunder Client affiche le PDF (ou propose de l'enregistrer).
-
-### Étape 9 — Vérifier les protections
-| Test | Résultat attendu |
-| --- | --- |
-| `GET /api/employees` **sans** jeton | 401 `Authentification requise` |
-| `GET /api/users` avec le jeton de l'agent | 403 `Accès refusé : droits insuffisants` |
-| `GET /api/employees` avec le jeton de l'agent | Pas de champ `salary` dans les résultats |
-| `POST /api/auth/register` avec `"role": "admin"` | Le compte créé a quand même `"role": "employee"` |
-| Jeton modifié d'un seul caractère | 401 `Session invalide ou expirée` |
-| 21 connexions ratées en 15 minutes | 429 `Trop de tentatives échouées` (les connexions réussies ne comptent pas) |
-
-## 6.4 Codes de réponse
-
-| Code | Signification | Exemple dans SIGRH |
-| --- | --- | --- |
-| **200** OK | Succès | Lecture, modification |
-| **201** Created | Créé | Inscription, pointage, congé, dossier |
-| **400** Bad Request | Données invalides | Mot de passe trop court, date invalide, solde insuffisant, motif manquant |
-| **401** Unauthorized | Pas connecté ou jeton invalide | Jeton absent ou expiré |
-| **403** Forbidden | Connecté, mais pas le droit | Un agent qui appelle `/api/users` |
-| **404** Not Found | N'existe pas, ou pas visible pour vous | Dossier d'un autre service |
-| **409** Conflict | Conflit avec l'état actuel | Déjà pointé, email déjà utilisé, congé déjà traité, période qui chevauche |
-| **413** Payload Too Large | Trop gros | Pièce jointe de plus de 5 Mo |
-| **429** Too Many Requests | Trop de tentatives | Connexions répétées |
-| **500** Internal Server Error | Bug côté serveur | Lire le terminal du serveur |
-
-Toutes les erreurs ont la même forme : `{ "message": "Texte lisible" }`. C'est ce texte que l'application affiche dans le message rouge.
-
-## 6.5 Utiliser l'API depuis React
-
-Tous les appels passent par `client/src/services/api.js` (document 4, section 4.32) :
-
-```jsx
-import api, { qs, download } from '../services/api';
-
-// Lire
-const employes = await api.get(`/employees${qs({ q: 'awa', page: 1 })}`);
-
-// Créer
-await api.post('/leaves', { leave_type: 'paid', start_date: '2026-10-05', end_date: '2026-10-09' });
-
-// Action sur un dossier
-const dossier = await api.post(`/projects/${id}/actions`, { action: 'advance', comment: 'OK' });
-
-// Télécharger un PDF
-await download(`/payroll/${slip.id}/pdf`);
-```
-
-Le jeton est ajouté automatiquement. En cas d'erreur, `api` lance une exception dont le `message` est celui du serveur, qu'on affiche avec `toast.error(err)`.
-
-Pour **ajouter une nouvelle route**, toujours dans cet ordre :
-1. Écrire la fonction dans le contrôleur.
-2. Ajouter la ligne dans le fichier `routes/…Routes.js` (avec `authorize(...)` si besoin).
-3. La tester dans Thunder Client.
-4. L'appeler depuis la page React avec `api.get` ou `api.post`.
+Profils : **A** = agent · **C** = chef de structure (agent qui dirige une structure) · **DRH** = gestionnaire_rh · **P** = pilotage · **DSI** = admin_dsi · **Tous** = tout utilisateur connecté.
 
 ---
-Projet SIGRH (EMS) — documentation.
+
+## 2. Authentification — `/api/auth`
+
+| Méthode | Route | Accès | Corps / paramètres | Réponse |
+|---|---|---|---|---|
+| POST | `/auth/login` | public | `{ email, password }` | `{ token, user }` ou `{ mfa_required: true, mfa_token }` |
+| POST | `/auth/mfa/verify` | public (jeton 2FA) | `{ mfa_token, code }` | `{ token, user }` |
+| POST | `/auth/activate` | public | `{ email, identifier, password }` — `identifier` = identifiant SIGRH ou matricule de solde | `{ token, user }` |
+| GET | `/auth/me` | Tous | — | `{ user }` : profil, institution, structures dirigées, dossier |
+| PUT | `/auth/password` | Tous | `{ currentPassword, newPassword }` (10 caractères, majuscule, minuscule, chiffre) | `{ message }` |
+| POST | `/auth/mfa/setup` | Tous | — | `{ secret, qr, uri }` (QR code en data URL) |
+| POST | `/auth/mfa/enable` | Tous | `{ code }` | `{ user }` |
+| POST | `/auth/mfa/disable` | A (interdit aux profils privilégiés si `MFA_REQUIRED`) | `{ code }` | `{ user }` |
+
+## 3. Agents — `/api/employees`
+
+| Méthode | Route | Accès | Détails |
+|---|---|---|---|
+| GET | `/employees` | Tous | `?scope=directory|institution|team`, `q`, `structure` (inclut les sous-structures), `institution`, `hierarchie`, `corps`, `position`, `statut`, `sexe`, `nin`, `biometrie=non`, `sort=name|sigrh|entree|structure|hierarchie|naissance`, `order`, `page`, `limit`. Les champs renvoyés dépendent du niveau d’accès |
+| GET | `/employees/me` | A | Mon dossier complet |
+| PUT | `/employees/me` | A | `{ phone, address, marital_status, children_count }` |
+| POST | `/employees` | DRH | Création dans son institution : `first_name`, `last_name`, `email`, `structure_id` (obligatoires), `sexe`, `date_of_birth`, `nin`, `matricule_solde`, `corps_id`, `hierarchie`, `grade`, `echelon`, `statut_emploi`, `position_statutaire`, `date_entree_fp`, `date_prise_service`, `salary`, `fonction`, `acte_reference`… |
+| GET | `/employees/:id` | Tous | Fiche selon le niveau d’accès (full, team, public) |
+| GET | `/employees/:id/dossier` | A (le sien), C (son équipe), DRH (son institution) | Dossier complet : carrière, affectations, diplômes, absences, formations, évaluations, demandes, rémunération, historique |
+| GET | `/employees/:id/nin` | A (le sien), DRH | NIN en clair — **consultation journalisée** |
+| PUT | `/employees/:id` | DRH | Mêmes champs que la création ; chaque modification est historisée |
+| POST | `/employees/:id/verify-identity` | DRH | Vérification auprès de l’état civil |
+| POST | `/employees/:id/biometrie` | DRH | `{ biometric_id }` |
+| POST | `/employees/:id/diplomas` | DRH | `{ title, level, school, year }` |
+| DELETE | `/employees/:id/diplomas/:diplomaId` | DRH | — |
+| POST | `/employees/:id/career-events` | DRH | Sanction ou distinction : `{ type, effective_date, acte_reference, description }` (les autres actes passent par un circuit) |
+| POST | `/employees/:id/documents` | A (le sien), DRH | `{ name, mime_type, content, category }` |
+| GET | `/employees/:id/documents/:docId` | A (le sien), DRH | Téléchargement |
+
+## 4. Structures — `/api/structures`
+
+| Méthode | Route | Accès | Détails |
+|---|---|---|---|
+| GET | `/structures` | Tous | Arbre national ; `?flat=1` liste à plat ; `?all=1` inclut les inactives |
+| GET | `/structures/:id` | Tous | Fiche : sous-structures, postes, agents (annuaire) |
+| POST | `/structures/requests` | DRH, P, DSI | Proposition : `{ action: create|update|deactivate, structure_id?, payload: { code, name, sigle, type, parent_id, region, head_agent_id } }` |
+| GET | `/structures/requests` | DRH (les siennes), P, DSI | Liste des propositions |
+| PATCH | `/structures/requests/:id` | P, DSI | `{ decision: approve|reject, comment }` |
+| POST | `/structures` | P, DSI | Création directe |
+| PUT | `/structures/:id` | P, DSI ; DRH pour le responsable d’une structure de son institution | `{ name, sigle, region, head_agent_id, is_active… }` |
+| POST | `/structures/:id/positions` | DRH | Poste budgétaire : `{ code, title, corps_id, hierarchie, is_budgeted }` |
+| PUT | `/positions/:id` | DRH | `{ employee_id | null, title }` |
+| GET | `/corps` | Tous | Corps de la fonction publique |
+| POST | `/corps` | P, DSI | `{ code, name, hierarchie, description }` |
+
+## 5. Circuits et demandes
+
+| Méthode | Route | Accès | Détails |
+|---|---|---|---|
+| GET | `/workflows/types` | Tous | Types de demandes avec leurs étapes |
+| PUT | `/workflows/types/:id` | P, DSI | `{ name, sla_days, required_documents, description, is_active, agent_can_submit, steps: [{ name, assignee_kind, structure_id, expected_days }] }` |
+| GET | `/requests` | Tous | `?scope=mine|todo|institution`, `status`, `type`, `category`, `overdue=1`, `q`, `page`, `limit` |
+| POST | `/requests` | A (pour lui-même, si `agent_can_submit`), DRH (pour un agent de son institution) | `{ type_id, employee_id?, title, description, priority, deposit_channel, payload }` |
+| GET | `/requests/:id` | Personnes concernées | Détail, circuit, historique, pièces, droits (`canAct`, `canAssign`…) |
+| POST | `/requests/:id/actions` | Valideur de l’étape (jamais le demandeur) | `{ action, comment, assigned_employee_id }` |
+| GET | `/requests/:id/receipt` | Personnes concernées | Récépissé PDF |
+| POST | `/requests/:id/documents` | Personnes concernées | Pièce justificative |
+| GET | `/requests/:id/documents/:docId` | Personnes concernées | Téléchargement |
+
+**Actions** : `approve`, `return` (motif obligatoire), `request_documents`, `resume`, `reject` (motif obligatoire), `cancel` (demandeur), `assign`, `comment`.
+
+**`payload` selon l’acte** :
+
+| Type (effet) | `payload` |
+|---|---|
+| MUTATION (`mutation`) | `{ target_structure_id, fonction?, effective_date?, acte_reference? }` |
+| AVANCEMENT (`avancement`) | `{ grade?, echelon?, hierarchie?, corps_id?, salary?, effective_date? }` (grade ou échelon obligatoire) |
+| NOMINATION (`nomination`) | `{ fonction, head_of_structure_id? }` |
+| DETACHEMENT, DISPONIBILITE (`position`) | `{ position_statutaire: detachement|disponibilite|activite|suspension }` |
+| TITULARISATION, RETRAITE, ATTESTATION | `{}` (facultatif : `effective_date`, `acte_reference`) |
+
+Les congés et les inscriptions en formation créent leur demande automatiquement (voir 6 et 7).
+
+## 6. Temps et absences
+
+| Méthode | Route | Accès | Détails |
+|---|---|---|---|
+| GET | `/leaves/types` | Tous | Types de congés |
+| GET | `/leaves/balance` | A ; DRH et C avec `?employee=` | Soldes : `?year=` |
+| GET | `/leaves` | Tous | `?scope=mine|team|institution`, `status`, `type`, `from` |
+| POST | `/leaves` | A | `{ leave_type, start_date, end_date, reason, destination }` → crée l’absence **et** la demande du circuit CONGE |
+| PATCH | `/leaves/:id/cancel` | A (la sienne), DRH | Annulation (recrédite le solde si déjà approuvé) |
+| POST | `/attendance/check-in` | A | `{ latitude?, longitude? }` |
+| POST | `/attendance/check-out` | A | — |
+| GET | `/attendance/today` | A ; DRH (vue institution) | Pointage du jour |
+| GET | `/attendance` | Tous | `?scope=mine|team|institution`, `from`, `to`, `status`, `source`, `employee` |
+| POST | `/attendance` | DRH | Saisie ou correction : `{ employee_id, work_date, check_in, check_out, status, note }` |
+| POST | `/attendance/close-day` | DRH | `{ date }` : marque absents et absences autorisées, notifie |
+| GET | `/attendance/report` | Tous (selon périmètre) | `?year=&month=&scope=` : rapport mensuel et absentéisme |
+
+## 7. Formation et évaluation
+
+| Méthode | Route | Accès | Détails |
+|---|---|---|---|
+| GET | `/trainings` | Tous | Catalogue et sessions à venir |
+| POST | `/trainings` | DRH, P, DSI | `{ code, title, provider, domain, duration_days, is_certifying, description }` |
+| POST | `/trainings/:id/sessions` | DRH, P, DSI | `{ start_date, end_date, location, capacity }` |
+| POST | `/trainings/sessions/:id/enroll` | A | `{ motivation }` → demande du circuit FORMATION |
+| POST | `/trainings/sessions/:id/participants` | DRH | `{ employee_id }` : inscription directe |
+| GET | `/trainings/sessions/:id/participants` | DRH, P, DSI | Participants |
+| PATCH | `/trainings/enrollments/:id` | DRH | `{ status: attended|certified|absent, result }` |
+| GET | `/performance` | Tous | `?scope=mine|team|institution&year=` |
+| POST | `/performance` | C, DRH | `{ employee_id, period, review_date, rating, feedback, goals[], indicators[], status }` |
+| PUT | `/performance/:id` | Évaluateur ; l’agent ne modifie que l’avancement de ses objectifs | — |
+| GET | `/performance/insights/:employeeId` | A (lui-même), C, DRH | Score et recommandations |
+
+## 8. Rémunération et Solde — `/api/solde`
+
+| Méthode | Route | Accès | Détails |
+|---|---|---|---|
+| GET | `/solde/payslips` | A ; DRH avec `?scope=institution` | `?year=&month=&source=` |
+| GET | `/solde/payslips/:id/pdf` | A (les siens), DRH | Bulletin PDF |
+| POST | `/solde/simulation` | A, DRH | `{ employee_id?, year, month, bonus, otherDeductions }` |
+| POST | `/solde/imports` | P | `{ year, month, filename, content }` (CSV : `matricule_solde;nom;salaire_base;brut;retenues;impot;net`) |
+| GET | `/solde/imports` | P, DRH | Imports reçus |
+| GET | `/solde/imports/:id/reconciliation` | P (national), DRH (son institution) | `{ summary, anomalies[] }` |
+
+## 9. Pilotage, tableau de bord, communication
+
+| Méthode | Route | Accès | Détails |
+|---|---|---|---|
+| GET | `/dashboard` | Tous | Accueil adapté au profil |
+| GET | `/pilotage/indicators` | P (`?institution=` facultatif), DRH (son institution) | Indicateurs agrégés |
+| GET | `/pilotage/export.xlsx` | P, DRH | Classeur Excel multi-onglets |
+| GET | `/pilotage/export.pdf` | P, DRH | Note de synthèse |
+| GET | `/notifications` | Tous | `{ data, unread }` |
+| PATCH | `/notifications/:id/read` | Tous | `:id` ou `all` |
+| GET | `/announcements` | Tous | Nationales et de mon institution |
+| POST | `/announcements` | P (nationale par défaut, `national: false` sinon), DRH (institution) | `{ title, content, event_date?, national? }` |
+| DELETE | `/announcements/:id` | Auteur, P (nationales), DRH (son institution) | — |
+| GET | `/calendar` | Tous | `?from=&to=` : événements, congés, évaluations, sessions, échéances |
+
+## 10. Reprise des données — `/api/imports`
+
+| Méthode | Route | Accès | Détails |
+|---|---|---|---|
+| GET | `/imports/template` | DRH | Modèle CSV |
+| POST | `/imports` | DRH | `{ filename, content }` : analyse sans écriture dans le référentiel |
+| GET | `/imports` | DRH | Lots de son institution |
+| GET | `/imports/:id` | DRH | Détail ligne par ligne (erreurs, doublons) |
+| POST | `/imports/:id/decision` | DRH | `{ decision: apply|reject }` |
+
+## 11. Administration (DSI) — `/api/admin`
+
+| Méthode | Route | Détails |
+|---|---|---|
+| GET | `/admin/users` | Comptes et état de la revue des droits (`review_due`) |
+| POST | `/admin/users` | `{ name, email, password, role, structure_id, employee_id? }` (pilotage réservé à la Présidence et au SGG) |
+| PATCH | `/admin/users/:id` | `{ role?, structure_id?, is_active?, password?, reset_mfa? }` (pas sur son propre compte) |
+| POST | `/admin/users/:id/review` | Confirme les droits (revue périodique) |
+| GET | `/admin/audit` | `?limit=&action=&user=` |
+| GET | `/admin/audit/verify` | `{ valid, checked, brokenAt }` |
+| GET | `/interop/clients` | Systèmes partenaires, habilitations disponibles, appels sur 30 jours |
+| POST | `/interop/clients` | `{ name, structure_id, scopes[] }` → la clé est renvoyée **une seule fois** |
+| PATCH | `/interop/clients/:id` | `{ is_active }` (révocation) |
+
+## 12. API partenaires — `/api/interop/v1` (en-tête `X-API-Key`)
+
+| Méthode | Route | Habilitation | Détails |
+|---|---|---|---|
+| GET | `/interop/v1/openapi.json` | aucune | Spécification OpenAPI 3 |
+| GET | `/interop/v1/agents/:identifiant` | `agents:read` | Identifiant SIGRH ou matricule de solde ; fiche minimale sans donnée sensible |
+| GET | `/interop/v1/structures` | `structures:read` | Référentiel des structures |
+| GET | `/interop/v1/statistiques/effectifs` | `statistiques:read` | Effectifs agrégés |
+| POST | `/interop/v1/biometrie/pointages` | `biometrie:write` | `{ pointages: [{ biometric_id | sigrh_id, horodatage, terminal }] }` (1 à 1 000) → 202 `{ recus, arrivees, departs, ignores, rejets[] }` |
+| POST | `/interop/v1/solde/paiements` | `solde:write` | `{ annee, mois, lignes: [{ matricule_solde, nom, salaire_base, brut, retenues, impot, net }] }` → 201 `{ import_id, lignes, rapprochees, non_rapprochees }` |
+
+## 13. Divers
+
+| Méthode | Route | Détails |
+|---|---|---|
+| GET | `/health` | `{ status, database, etat_civil, timestamp }` — sans authentification |

@@ -1,8 +1,8 @@
 {
-  "name": "ems",
+  "name": "sigrh",
   "version": "1.0.0",
   "private": true,
-  "description": "SIGRH – Employee Management System for the Ministry of Civil Service (React + Express + PostgreSQL)",
+  "description": "SIGRH – Système Intégré de Gestion des Ressources Humaines de l’administration publique sénégalaise (React + Express + PostgreSQL)",
   "scripts": {
     "install-all": "npm --prefix server install && npm --prefix client install",
     "server": "npm --prefix server run dev",

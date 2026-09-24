@@ -1,9 +1,15 @@
 {
-  "name": "SIGRH – Ministère de la Fonction Publique",
+  "name": "SIGRH – Système Intégré de Gestion des Ressources Humaines (Sénégal)",
   "short_name": "SIGRH",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#1e40af",
-  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+  "background_color": "#0b2d1c",
+  "theme_color": "#00853f",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
 }

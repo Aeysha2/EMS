@@ -1,231 +1,168 @@
-# 3. Guide de réalisation du projet
+# Document 3 — Guide d’installation et de réalisation
 
-On reconstruit SIGRH en 10 phases, dans cet ordre : d'abord la base de données et le serveur (backend), puis l'interface (frontend). **Chaque phase se teste avant de passer à la suivante.** Si un test échoue, on corrige avant d'avancer.
+Ce guide explique :
+- **Partie A** : comment installer et lancer le SIGRH sur votre poste (Windows, macOS ou Linux) ;
+- **Partie B** : dans quel ordre refaire le projet vous-même, depuis un dossier vide.
 
-```mermaid
-flowchart LR
-  A[1. Outils] --> B[2. Dossiers + Git]
-  B --> C[3. PostgreSQL]
-  C --> D[4. Serveur Express]
-  D --> E[5. Schéma SQL]
-  E --> F[6. Auth JWT]
-  F --> G[7. Modules métier]
-  G --> H[8. Client React]
-  H --> I[9. Pages]
-  I --> J[10. Tests + mise en ligne]
-```
+---
 
-Le serveur tourne sur le port **5002**, le client sur le port **5173**. Vite redirige tous les appels `/api` du client vers le serveur.
+## Partie A — Installer et lancer
 
-## Phase 1 — Installer les outils
+### A.1 Logiciels nécessaires
 
-1. **Node.js** (version 20 ou plus, « LTS ») depuis nodejs.org. Vérifier dans un terminal : `node -v` et `npm -v`.
-2. **PostgreSQL** (version 14 ou plus) depuis postgresql.org. L'installateur installe aussi **pgAdmin 4**. Notez le mot de passe de l'utilisateur `postgres` (voir le document 5).
-3. **VS Code** et **Git**. Vérifier : `git --version`.
-4. Dans VS Code, installer l'extension **Thunder Client** (ou le logiciel Postman) pour tester l'API.
+| Logiciel | Rôle | Vérifier |
+|---|---|---|
+| Node.js 20 ou plus (22 conseillé) | Exécute l’API et outille le frontend | `node -v` |
+| PostgreSQL 14 ou plus + pgAdmin 4 | Base de données | pgAdmin s’ouvre et se connecte |
+| Git | Récupérer le code | `git --version` |
+| VS Code | Éditeur | — |
 
-## Phase 2 — Créer la structure des dossiers
+### A.2 Récupérer le code
 
 ```bash
-mkdir EMS
+git clone https://github.com/Aeysha2/EMS.git
 cd EMS
-git init
-mkdir server client docs
+git checkout sigrh-senegal      # la branche du SIGRH national
+npm run install-all             # installe les dépendances de server/ et client/
 ```
 
-On sépare `server` (Node/Express) et `client` (React). Ce sont deux programmes différents, chacun avec son propre `package.json`.
+### A.3 Créer la base dans pgAdmin
 
-Créer tout de suite le fichier `.gitignore` à la racine, pour ne **jamais** envoyer les secrets ni les dépendances sur GitHub :
+1. Ouvrez pgAdmin et dépliez **Servers → PostgreSQL**.
+2. *(Conseillé)* Clic droit sur **Login/Group Roles → Create → Login/Group Role** : nom `sigrh_user` ; onglet *Definition* : mot de passe `sigrh2026` ; onglet *Privileges* : cochez **Can login?**.
+3. Clic droit sur **Databases → Create → Database** : nom `sigrh`, propriétaire `sigrh_user`.
+4. Pour les tests, créez de la même façon une base `sigrh_test`.
 
-```
-node_modules/
-dist/
-.env
-.env.local
-*.log
-```
+Vous n’avez **pas** besoin de créer les tables : l’API applique `server/db/schema.sql` à chaque démarrage (le script est idempotent).
 
-Créer ensuite un `package.json` à la racine avec des raccourcis (voir le document 4, section 4.2).
+### A.4 Configurer l’API
 
-## Phase 3 — Préparer PostgreSQL
-
-Dans pgAdmin (détails dans le document 5) :
-1. Créer la base `ems`.
-2. Créer l'utilisateur `ems_user` et le rendre propriétaire de la base :
-```sql
-CREATE USER ems_user WITH PASSWORD 'ems2026';
-ALTER DATABASE ems OWNER TO ems_user;
+```bash
+cp server/.env.example server/.env        # Windows : copy server\.env.example server\.env
 ```
 
-**Test** : dans pgAdmin, la base `ems` apparaît sous *Databases*.
+Modifiez au minimum dans `server/.env` :
 
-## Phase 4 — Démarrer le serveur Express
+```ini
+DATABASE_URL=postgresql://sigrh_user:sigrh2026@localhost:5432/sigrh
+JWT_SECRET=une_longue_chaine_aleatoire_de_plus_de_32_caracteres
+MFA_REQUIRED=false          # pour une démonstration ; true en production
+```
+
+> Si votre utilisateur `postgres` n’a pas de mot de passe, écrivez `postgresql://postgres@localhost:5432/sigrh`.
+
+### A.5 Charger les données de démonstration
+
+```bash
+npm run seed
+```
+
+La commande **vide toutes les tables**, puis crée 24 structures, 11 corps, 70 agents, 11 circuits, des demandes, congés, pointages, formations,
+évaluations, imports de la Solde et 3 clés d’API. Elle affiche à la fin la liste des comptes (mot de passe commun `Sigrh@2026!`).
+
+### A.6 Lancer
+
+Dans deux terminaux :
+
+```bash
+npm run server      # API sur http://localhost:5002 (redémarre à chaque modification grâce à nodemon)
+npm run client      # interface sur http://localhost:5173
+```
+
+Vérifiez l’API : http://localhost:5002/api/health doit répondre `{"status":"online","database":"ok",…}`.
+
+### A.7 Parcours de démonstration conseillé
+
+1. **Agent** (`agent@sigrh.test`) : Mon dossier → Absences → *Demander un congé* → Demandes : la demande est à l’étape « Avis du supérieur ».
+2. **Chef de structure** (`chef.dgc@sigrh.test`) : Demandes → *À traiter* → ouvrir la demande → *Valider*.
+3. **DRH** (`drh.mfp@sigrh.test`) : valide l’étape suivante ; le solde de congés de l’agent est débité. Ouvrez un dossier agent → *Initier un acte* (avancement).
+4. **DGFP** (`dgfp@sigrh.test`) : vise l’avancement ; le grade de l’agent est mis à jour et l’acte apparaît dans l’onglet Carrière.
+5. **Pilotage** (`pilotage.presidence@sigrh.test`) : Tableaux de bord RH → export Excel ou note PDF. Rémunération → contrôle de cohérence de la Solde.
+6. **DSI** (`admin.dsi@sigrh.test`) : Habilitations et audit → *Vérifier la chaîne* ; Interopérabilité → créer une clé.
+
+### A.8 Tester la double authentification
+
+1. Mettez `MFA_REQUIRED=true` dans `server/.env` et redémarrez l’API.
+2. Connectez-vous avec un profil DRH : l’application impose l’écran **Activer la double authentification**.
+3. Scannez le QR code avec Google Authenticator (ou Microsoft Authenticator, FreeOTP), saisissez le code à 6 chiffres.
+4. Aux connexions suivantes, le code est demandé après le mot de passe.
+5. Téléphone perdu : le DSI réinitialise la 2FA du compte (Habilitations → Modifier).
+
+### A.9 Lancer les tests
 
 ```bash
 cd server
-npm init -y
-npm install express pg bcryptjs jsonwebtoken cors dotenv helmet express-rate-limit pdfkit
-npm install -D nodemon
+# macOS/Linux
+TEST_DATABASE_URL=postgresql://sigrh_user:sigrh2026@localhost:5432/sigrh_test npm test
+# Windows PowerShell
+$env:TEST_DATABASE_URL="postgresql://sigrh_user:sigrh2026@localhost:5432/sigrh_test"; npm test
 ```
 
-1. Dans `server/package.json`, ajouter `"type": "module"` et les scripts `start`, `dev`, `seed`, `migrate`, `test` (document 4, section 4.3).
-2. Créer `server/.env` et `server/.env.example` (document 4, section 4.4).
-3. Créer `server/config/db.js` : la connexion à PostgreSQL (un « pool » de connexions).
-4. Créer `server/server.js` avec, pour l'instant, une seule route :
-```js
-app.get('/api/health', async (req, res) => {
-  await pool.query('SELECT 1');
-  res.json({ status: 'online', database: 'ok' });
-});
-```
-5. Lancer : `npm run dev`.
+Résultat attendu : `# tests 30`, `# pass 30`, `# fail 0`.
 
-**Test** : ouvrir http://localhost:5002/api/health. On doit voir `{"status":"online","database":"ok"}`. Si le serveur affiche une erreur de mot de passe, corriger `DATABASE_URL` dans `.env`.
+### A.10 Problèmes fréquents
 
-## Phase 5 — Écrire le schéma SQL
-
-1. Créer `server/db/schema.sql` avec toutes les tables (document 5, section 5.4). On écrit `CREATE TABLE IF NOT EXISTS` pour pouvoir relancer le script sans erreur.
-2. Créer `server/utils/migrate.js` : il lit `schema.sql` et l'exécute.
-3. Dans `server.js`, appeler `migrate()` avant `app.listen(...)`.
-
-**Test** : relancer le serveur, puis dans pgAdmin faire clic droit sur `ems` → **Refresh** → *Schemas → public → Tables*. Les 16 tables apparaissent.
-
-## Phase 6 — Authentification (inscription, connexion, rôles)
-
-Dans cet ordre :
-1. `utils/AppError.js` : une erreur avec un code HTTP (400, 401, 403, 404…).
-2. `middleware/errorHandler.js` : transforme toutes les erreurs en réponse JSON propre.
-3. `models/User.js` et `models/Employee.js` : les requêtes SQL réutilisables.
-4. `middleware/auth.js` : `signToken` (crée le jeton), `protect` (vérifie le jeton) et `authorize('admin','hr')` (vérifie le rôle).
-5. `controllers/authController.js` : `register`, `login`, `me`, `changePassword`.
-6. `routes/authRoutes.js`, branché dans `server.js` : `app.use('/api/auth', authRoutes)`.
-
-**Test** avec Thunder Client (document 6) :
-- `POST http://localhost:5002/api/auth/register` avec `{"name":"Test","email":"test@ems.gov","password":"Test1234"}` renvoie `201` et un `token`.
-- `POST /api/auth/login` avec les mêmes identifiants renvoie `200`.
-- `GET /api/auth/me` avec l'en-tête `Authorization: Bearer <token>` renvoie l'utilisateur.
-
-## Phase 7 — Les modules métier (un par un)
-
-Pour **chaque** module, on applique toujours le même schéma : **contrôleur → routes → branchement dans `server.js` → test**.
-
-| Ordre | Module | Fichiers | Test rapide |
-| --- | --- | --- | --- |
-| 7.1 | Départements | `departmentController.js`, `departmentRoutes.js` | `POST /api/departments` en RH |
-| 7.2 | Employés | `employeeController.js`, `employeeRoutes.js` | `GET /api/employees?q=...` |
-| 7.3 | Utilitaires | `utils/dates.js`, `utils/notify.js`, `utils/audit.js`, `utils/sanitize.js` | — |
-| 7.4 | Présences | `attendanceController.js`, `attendanceRoutes.js` | Deux `check-in` → le 2ᵉ renvoie `409` |
-| 7.5 | Congés | `leaveController.js`, `leaveRoutes.js` | Demande, puis approbation → solde diminué |
-| 7.6 | Paie | `utils/payroll.js`, `utils/payslipPdf.js`, `payrollController.js`, `payrollRoutes.js` | `POST /api/payroll/generate`, puis PDF |
-| 7.7 | Performance | `performanceController.js`, `performanceRoutes.js` | `GET /api/performance/insights/1` |
-| 7.8 | Dossiers | `models/Project.js`, `projectController.js`, `projectRoutes.js` | Créer un dossier, puis `POST /actions` avec `advance` |
-| 7.9 | Tableau de bord, rapports, notifications, comptes | `dashboardController.js`, `reportController.js`, `notificationController.js`, `userController.js`, `miscRoutes.js` | `GET /api/dashboard` |
-
-Ensuite, écrire `utils/seed.js` (les données de démo) et lancer `npm run seed`.
-
-**Test** : dans pgAdmin, clic droit sur la table `employees` → *View/Edit Data → All Rows* : 16 agents apparaissent.
-
-## Phase 8 — Créer le client React
-
-```bash
-cd ..            # revenir à la racine EMS
-npm create vite@latest client -- --template react
-cd client
-npm install
-npm install react-router-dom lucide-react
-```
-
-1. Supprimer les fichiers de démonstration de Vite (`App.css`, `assets/react.svg`…).
-2. Renommer `src/main.jsx` en `src/index.jsx`, et modifier la balise `<script>` de `index.html` en conséquence.
-3. Dans `vite.config.js`, ajouter le **proxy** `/api` vers `http://localhost:5002` (document 4, section 4.30).
-4. Créer les dossiers `src/components`, `src/pages`, `src/dashboard`, `src/services`, `src/context`, `src/utils`.
-5. Écrire dans cet ordre :
-   - `services/api.js` : toutes les requêtes vers le serveur, avec le jeton ;
-   - `context/AuthContext.jsx` : l'utilisateur connecté ;
-   - `context/ThemeContext.jsx` : le mode sombre ;
-   - `context/ToastContext.jsx` : les petits messages de confirmation ;
-   - `utils/format.js` : l'affichage des dates, des montants et des libellés ;
-   - `utils/useFetch.js` : un « hook » qui charge des données ;
-   - `components/ui.jsx` : les briques d'interface (Modal, Badge, StatCard, graphiques…) ;
-   - `index.css` : le style global.
-6. Écrire `index.jsx` (les fournisseurs de contexte), puis `App.jsx` (les routes).
-
-**Test** : `npm run dev` dans `client/`, puis ouvrir http://localhost:5173.
-
-## Phase 9 — Les pages
-
-Ordre conseillé, du plus simple au plus complexe :
-
-1. `pages/Login.jsx` et `pages/Register.jsx`, puis `components/Layout.jsx` (menu latéral, barre du haut, cloche des notifications).
-2. `dashboard/Dashboard.jsx`, `EmployeeDashboard.jsx`, `AdminDashboard.jsx`, `AnnouncementsWidget.jsx`, `components/CheckInCard.jsx`.
-3. `pages/Departments.jsx`.
-4. `pages/Employees.jsx`, `components/EmployeeForm.jsx`, `pages/EmployeeDetail.jsx`.
-5. `pages/Attendance.jsx`.
-6. `pages/Leaves.jsx`.
-7. `pages/Payroll.jsx`.
-8. `pages/Performance.jsx`, `components/InsightsPanel.jsx`.
-9. `pages/Projects.jsx`, `components/ProjectForm.jsx`, `pages/ProjectDetail.jsx`, `pages/ProjectSettings.jsx`.
-10. `pages/Reports.jsx`, `pages/Announcements.jsx`, `pages/Users.jsx`, `pages/Profile.jsx`.
-
-**Test à chaque page** : se connecter avec chacun des trois profils et vérifier ce que chacun voit, et ce qu'il **ne doit pas** voir.
-
-## Phase 10 — Tests, GitHub et mise en ligne
-
-1. **Tests automatiques** : créer une base `ems_test` (réservée aux tests, car ils vident toutes les tables), écrire `server/tests/api.test.js`, puis lancer :
-```bash
-# Windows (PowerShell)
-$env:TEST_DATABASE_URL="postgresql://ems_user:ems2026@localhost:5432/ems_test"; npm test
-# Mac / Linux
-TEST_DATABASE_URL=postgresql://ems_user:ems2026@localhost:5432/ems_test npm test
-```
-   Pour créer `ems_test` avec `ems_user` comme propriétaire : `CREATE DATABASE ems_test OWNER ems_user;` dans pgAdmin.
-2. **Build du client** : `npm run build` dans `client/`. Il ne doit y avoir aucune erreur.
-3. **GitHub** :
-```bash
-git add .
-git commit -m "Première version de SIGRH"
-git branch -M main
-git remote add origin https://github.com/<votre-compte>/EMS.git
-git push -u origin main
-```
-4. **Intégration continue** : le fichier `.github/workflows/ci.yml` relance les tests et le build à chaque `push`. Le résultat apparaît dans l'onglet **Actions** de GitHub.
-5. **Mise en ligne** (optionnelle) :
-   - base PostgreSQL gratuite sur Render, Railway ou Neon ;
-   - serveur sur Render : *Root directory* = `server`, *Start* = `npm start`, et les variables `DATABASE_URL`, `DB_SSL=true`, `JWT_SECRET`, `CLIENT_URL`, `TZ` ;
-   - client sur Vercel : *Root directory* = `client`, et la variable `VITE_API_URL` = l'adresse du serveur Render.
-
-## Lancer le projet au quotidien
-
-```bash
-# Terminal 1 (à la racine EMS)
-npm run server
-# Terminal 2 (à la racine EMS)
-npm run client
-```
-Ouvrir http://localhost:5173. Pour arrêter : `Ctrl + C` dans chaque terminal.
-
-## Dépannage
-
-| Message ou symptôme | Cause | Solution |
-| --- | --- | --- |
-| `'npm' n'est pas reconnu…` | Node.js n'est pas installé, ou VS Code a été ouvert avant l'installation | Installer Node.js, puis fermer et rouvrir VS Code |
-| `JWT_SECRET manquant ou trop court` | `.env` absent, mal nommé ou pas dans `server/` | Le fichier doit s'appeler exactement `server/.env`, avec un `JWT_SECRET` d'au moins 16 caractères |
-| `password authentication failed for user …` | Mauvais mot de passe dans `DATABASE_URL` | Corriger `.env` ; tester la même connexion dans pgAdmin |
-| `database "ems" does not exist` | Base non créée, ou nom différent | Créer la base `ems` (document 5) |
-| `connect ECONNREFUSED 127.0.0.1:5432` | Le service PostgreSQL est arrêté, ou le port est différent | Windows : `services.msc` → *postgresql-x64-18* → Démarrer. Vérifier le port dans pgAdmin |
-| `permission denied for schema public` | La base n'appartient pas à `ems_user` | `ALTER DATABASE ems OWNER TO ems_user;` puis `ALTER SCHEMA public OWNER TO ems_user;` (exécuté dans la base `ems`) |
-| `EADDRINUSE: address already in use :::5002` | Un serveur tourne déjà | Fermer l'autre terminal, ou changer `PORT` dans `.env` |
-| Page « Serveur injoignable » | Le terminal du serveur a été fermé ou a planté | Relancer `npm run server` et lire l'erreur affichée |
-| Connexion refusée avec les comptes de démo | Données de démo non chargées | `npm run seed` |
-| Le pointage « tourne » longtemps | Le navigateur attend l'autorisation de géolocalisation | Répondre à la demande, ou attendre 10 s : le pointage se fait alors sans GPS |
-| Les changements de code ne s'affichent pas | Cache du navigateur, ou serveur lancé avec `npm start` | `Ctrl + Shift + R`, et utiliser `npm run server` (nodemon) |
-
-**Réflexes de débogage**
-1. **Lire le terminal du serveur** : la vraie cause de l'erreur y est écrite.
-2. **Ouvrir la console du navigateur** (F12 → *Console*, puis onglet *Network*) : cliquer sur la requête en rouge et regarder *Response*.
-3. **Rejouer la requête dans Thunder Client** : si elle marche là, le problème vient de React ; sinon, il vient du serveur.
-4. **Tester la requête SQL directement dans pgAdmin** (*Query Tool*).
-5. **Changer une seule chose à la fois**, puis retester.
+| Message | Cause | Solution |
+|---|---|---|
+| `password authentication failed` | Mauvais mot de passe dans `DATABASE_URL` | Corriger le `.env` (le mot de passe de pgAdmin n’est pas forcément celui de l’utilisateur SQL) |
+| `database "sigrh" does not exist` | Base non créée | Étape A.3 |
+| `JWT_SECRET manquant ou trop court` | `.env` absent ou secret de moins de 16 caractères | Étape A.4 |
+| `EADDRINUSE :5002` | Une autre API tourne déjà | Fermer l’autre terminal ou changer `PORT` |
+| Écran « Activer la double authentification » bloquant | `MFA_REQUIRED=true` | Activer la 2FA ou passer `MFA_REQUIRED=false` en démonstration |
+| `Trop de tentatives échouées` | 20 échecs de connexion en 15 minutes | Attendre ou augmenter `AUTH_RATE_LIMIT` en développement |
 
 ---
-Projet SIGRH (EMS) — documentation.
+
+## Partie B — Refaire le projet soi-même, étape par étape
+
+Suivez cet ordre : chaque étape s’appuie sur la précédente. Le **document 4** explique le code de chaque étape, le **document 7** le rôle de chaque fichier.
+
+### Étape 1 — Squelette
+```bash
+mkdir EMS && cd EMS && git init
+mkdir server client docs
+cd server && npm init -y
+npm install express pg bcryptjs jsonwebtoken cors helmet express-rate-limit dotenv pdfkit qrcode exceljs
+npm install -D nodemon
+```
+Dans `server/package.json`, ajoutez `"type": "module"` et les scripts `start`, `dev`, `seed`, `test`.
+
+### Étape 2 — Base de données
+Écrivez `server/db/schema.sql` (document 5) dans cet ordre, car les clés étrangères imposent que la table cible existe :
+structures → corps → employees → positions, diplômes, affectations, career_events, record_changes → users → workflow_types, workflow_steps,
+requests, request_history → leave_types, leave_balances, leaves, attendance → trainings, sessions, enrollments → performance_reviews →
+payrolls, solde_imports, solde_lines → api_clients, interop_logs → import_batches, import_rows → documents, notifications, announcements → activity_logs (+ déclencheur).
+
+Puis `config/db.js` (pool de connexions, `query`, `withTransaction`) et `utils/migrate.js` (exécute le schéma au démarrage).
+
+### Étape 3 — Utilitaires transverses
+`utils/AppError.js` (erreurs HTTP), `utils/dates.js`, `utils/sanitize.js`, `utils/crypto.js` (chiffrement, TOTP),
+`utils/audit.js` (journal chaîné), `utils/notify.js`, `utils/csv.js`.
+
+### Étape 4 — Authentification et habilitations
+`middleware/auth.js` : lecture du JWT, rechargement de l’utilisateur à chaque requête, calcul de son institution et des structures qu’il dirige,
+obligation de 2FA, fonction `accessLevel`. Puis `controllers/authController.js` et `routes/authRoutes.js`. Testez la connexion avec Postman (document 8).
+
+### Étape 5 — Référentiels
+`models/Structure.js` (sous-arbre récursif), `controllers/structureController.js` ; `models/Employee.js`, `controllers/employeeController.js`.
+
+### Étape 6 — Moteur de circuits
+`models/Workflow.js` : c’est le cœur du SIGRH (qui doit valider, action, passage à l’étape suivante, effet final). Puis `workflowController.js` et `utils/alerts.js`.
+
+### Étape 7 — Modules métier
+Absences et présences (`leaveController`, `attendanceController`), formation, évaluation, Solde, pilotage, interopérabilité, reprise, administration.
+
+### Étape 8 — Données de démonstration et tests
+`utils/seed.js`, puis `tests/sigrh.test.js`. Lancez les tests après chaque modification importante.
+
+### Étape 9 — Frontend
+```bash
+cd ../client
+npm create vite@latest . -- --template react
+npm install react-router-dom lucide-react
+```
+Dans l’ordre : `services/api.js` → `context/` (auth, thème, toasts) → `components/ui.jsx` → `components/Layout.jsx` → `App.jsx` (routes) → `pages/Login.jsx` → les autres pages, module par module.
+Dans `vite.config.js`, déclarez le proxy `'/api': 'http://localhost:5002'`.
+
+### Étape 10 — Qualité et publication
+`.github/workflows/ci.yml` (tests et build à chaque push), README, documentation, puis `git add`, `git commit`, `git push`.

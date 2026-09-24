@@ -1,259 +1,185 @@
-# 7. Pourquoi chaque fichier existe (et comment le nommer)
+# Document 7 — Pourquoi chaque fichier, et pourquoi ce nom
 
-On ne devine pas les fichiers : on part des besoins du cahier des charges et on applique une méthode fixe. Chaque besoin donne des **données** (une table), des **actions** (un contrôleur), des **adresses** (des routes) et un **écran** (une page ou un composant).
+Ce document décrit **chaque fichier** du SIGRH : à quoi il sert, pourquoi il porte ce nom, et ce qu’il ne faut pas y mettre.
 
-## 7.1 La méthode pour savoir quel fichier créer
+## 1. Les principes d’organisation
 
-1. **Lister les « choses »** du cahier des charges (les noms) : employé, département, pointage, congé, bulletin, évaluation, dossier… Chaque nom devient une **table** dans `db/schema.sql`.
-2. **Lister les actions** (les verbes) : pointer, demander un congé, approuver, générer la paie, transmettre un dossier… Chaque groupe d'actions sur une même chose devient un **contrôleur** dans `controllers/`.
-3. **Donner une adresse à chaque action** : `POST /api/leaves` = demander un congé. Chaque groupe d'adresses devient un fichier dans `routes/`.
-4. **Repérer le code répété** :
-   - « vérifier le jeton et le rôle » sert dans presque toutes les routes → `middleware/auth.js` ;
-   - « la requête SQL d'un employé avec son département » sert dans plusieurs contrôleurs → `models/Employee.js` ;
-   - « calculer des jours ouvrés », « envoyer une notification », « écrire dans l'audit » → `utils/`.
-5. **Isoler la configuration** : connexion à la base → `config/`, secrets → `.env`.
-6. **Côté client, découper l'écran en morceaux** : chaque page du menu devient un fichier de `pages/` ; chaque morceau réutilisé sur plusieurs pages (fenêtre, badge, carte, pointage) devient un **composant** dans `components/`.
-7. **Repérer les données partagées par plusieurs écrans** (utilisateur connecté, thème, messages) → un **contexte** dans `context/`.
-8. **Regrouper les appels au serveur** → `services/api.js`.
+| Principe | Application |
+|---|---|
+| **Séparer par couche** | `routes/` dit *quelle URL*, `controllers/` dit *quoi faire*, `models/` dit *comment lire la base*. Une modification d’URL ne touche pas la logique, et inversement |
+| **Regrouper par module métier** | Un contrôleur par domaine du cahier des charges : structures, agents, circuits, Solde, pilotage… |
+| **Nommer en anglais pour le code, en français pour l’utilisateur** | Les noms de fichiers et de variables suivent les conventions du JavaScript (`employeeController.js`) ; tous les textes affichés sont en français. Les termes propres à l’administration sénégalaise restent en français (`Solde`, `Pilotage`, `Reprise`, `Parametrage`) car ils n’ont pas d’équivalent exact |
+| **Conventions de casse** | `camelCase` pour les fichiers JavaScript (`authController.js`), `PascalCase` pour les composants React et les modèles (`AgentDossier.jsx`, `Workflow.js`), `snake_case` pour SQL (`workflow_steps`) |
+| **Suffixe = rôle** | `…Controller.js`, `…Routes.js`, `….test.js` : on sait ce que contient un fichier sans l’ouvrir |
 
-C'est l'architecture **MVC** (Modèle – Vue – Contrôleur) : le modèle gère les données, le contrôleur applique les règles, la vue (React) affiche.
+## 2. Racine du dépôt
 
-```mermaid
-flowchart LR
-  A[Besoin du cahier] --> B[Nom : table + model]
-  A --> C[Verbe : contrôleur]
-  C --> D[Adresse : route]
-  A --> E[Écran : page / composant]
-  E --> F[Appel : api.js]
-  F --> D
-```
+| Fichier | Rôle |
+|---|---|
+| `package.json` | Scripts qui pilotent les deux sous-projets depuis la racine (`install-all`, `server`, `client`, `seed`, `test`, `build`) |
+| `README.md` | Présentation, démarrage rapide, comptes de démonstration. C’est la première page affichée par GitHub |
+| `.gitignore` | Exclut `node_modules/`, `.env`, `dist/` : les dépendances se réinstallent, les secrets ne se publient jamais |
+| `.github/workflows/ci.yml` | Intégration continue : à chaque `push`, GitHub démarre un PostgreSQL, lance les 30 tests et construit le frontend |
+| `docs/` | Documentation 01 à 08 et `postman/SIGRH-Senegal.postman_collection.json` |
 
-## 7.2 Exemple complet n° 1 : « l'agent pointe son arrivée » (F14)
+## 3. Le serveur (`server/`)
 
-| Question | Réponse | Fichier |
-| --- | --- | --- |
-| Quelle donnée stocker ? | Agent, jour, heure d'arrivée, statut, GPS | Table `attendance` dans `db/schema.sql` |
-| Quelle règle ? | Un seul pointage par jour | `UNIQUE (employee_id, work_date)` dans le schéma **et** `ON CONFLICT` dans le contrôleur |
-| Quelle action ? | `checkIn` | `controllers/attendanceController.js` |
-| Quelle adresse ? | `POST /api/attendance/check-in` | `routes/attendanceRoutes.js`, branché dans `server.js` |
-| Qui a le droit ? | Tout agent connecté | `protect` dans `middleware/auth.js` |
-| Quelle date « aujourd'hui » ? | Selon le fuseau horaire | `toISODate` dans `utils/dates.js` + `TZ` dans `.env` |
-| Quel écran ? | Une carte avec l'heure et un bouton | `components/CheckInCard.jsx`, utilisé dans le tableau de bord et dans `pages/Attendance.jsx` |
-| Quel appel ? | `api.post('/attendance/check-in', position)` | `services/api.js` |
+### 3.1 Point d’entrée et configuration
 
-## 7.3 Exemple complet n° 2 : « transmettre un dossier au service suivant » (F36)
+| Fichier | Rôle | Pourquoi ce nom |
+|---|---|---|
+| `server.js` | Crée l’application Express, branche les middlewares et les routes, applique le schéma, démarre l’écoute et les alertes | Nom conventionnel du point d’entrée d’un serveur Node |
+| `package.json` | Dépendances (express, pg, bcryptjs, jsonwebtoken, helmet, express-rate-limit, pdfkit, qrcode, exceljs…) et scripts | Imposé par npm |
+| `.env.example` | Modèle de configuration **sans secret**, versionné. On le copie en `.env` (non versionné) | Convention : `.env` est lu par `dotenv` |
+| `config/db.js` | Pool de connexions PostgreSQL, `query`, `withTransaction` | `config/` regroupe ce qui dépend de l’environnement |
+| `db/schema.sql` | Toutes les tables, contraintes, index, séquences et le déclencheur du journal | Un seul fichier SQL lisible, exécutable dans pgAdmin |
 
-1. **Données** : le dossier (`projects`), les étapes (`circuit_steps`), la trace (`project_history`).
-2. **Requêtes réutilisées** : `PROJECT_SELECT`, `getCircuit`, `nextReference` → `models/Project.js`.
-3. **Action** : `projectAction` avec `action = 'advance'` → `controllers/projectController.js`.
-4. **Adresse** : `POST /api/projects/:id/actions` → `routes/projectRoutes.js`.
-5. **Règles de droits** : `canProcess` (dans le contrôleur, car elles dépendent du dossier lui-même, pas seulement du rôle).
-6. **Prévenir le nouvel agent** : `notifyEmployee` → `utils/notify.js`.
-7. **Tracer** : `logActivity` → `utils/audit.js`.
-8. **Écran** : le bouton « Transmettre » et sa fenêtre → `pages/ProjectDetail.jsx`.
+### 3.2 Middlewares (`middleware/`)
+Un middleware s’exécute **avant** (ou après) le contrôleur, pour toutes les routes concernées.
 
-## 7.4 Les conventions de nommage
+| Fichier | Rôle |
+|---|---|
+| `auth.js` | Vérifie le jeton, recharge l’utilisateur et son périmètre (institution, structures dirigées), impose la 2FA, fournit `authorize` et `accessLevel` |
+| `errorHandler.js` | Transforme toute erreur en réponse JSON lisible (et les codes PostgreSQL en codes HTTP) ; renvoie 404 pour les routes inconnues |
+| `sanitize.js` | Retire des corps JSON les clés dangereuses (`__proto__`, `constructor`) |
 
-| Élément | Convention | Exemples | Pourquoi |
-| --- | --- | --- | --- |
-| Dossiers | minuscules, au pluriel | `controllers`, `routes`, `pages`, `components` | Un dossier contient **plusieurs** fichiers du même genre |
-| Contrôleurs | `nomController.js` en *camelCase* | `leaveController.js` | On sait immédiatement ce que contient le fichier |
-| Routes | `nomRoutes.js` | `leaveRoutes.js` | Même nom que le contrôleur associé : on les retrouve par paires |
-| Modèles | *PascalCase*, au singulier | `Employee.js`, `Project.js` | Un modèle décrit **une** chose |
-| Utilitaires | *camelCase*, selon le rôle | `dates.js`, `payroll.js`, `notify.js` | Nom court qui dit ce que ça fait |
-| Classe | *PascalCase* | `AppError.js` | Convention JavaScript pour les classes |
-| Composants et pages React | *PascalCase*, extension `.jsx` | `CheckInCard.jsx`, `ProjectDetail.jsx` | React **exige** une majuscule pour distinguer un composant d'une balise HTML (`<Modal>` et `<div>`) ; `.jsx` signale qu'il contient du JSX |
-| Contextes | `NomContext.jsx` | `AuthContext.jsx` | Le suffixe dit que c'est un contexte |
-| Hooks | commencent par `use` | `useFetch.js`, `useAuth()` | Règle de React : un hook commence par `use` |
-| Tables SQL | *snake_case*, au pluriel | `performance_reviews`, `project_history` | Convention SQL ; une table contient plusieurs lignes |
-| Colonnes SQL | *snake_case* | `employee_id`, `date_of_joining` | PostgreSQL met tout en minuscules : les majuscules ne sont pas pratiques |
-| Clés étrangères | `table_au_singulier_id` | `department_id`, `agent_id` | On devine vers quelle table elles pointent |
-| Variables d'environnement | *MAJUSCULES_SNAKE* | `DATABASE_URL`, `JWT_SECRET` | Convention universelle |
-| Adresses de l'API | `/api/` + nom au pluriel + `/:id` | `/api/leaves/12/review` | Style REST : une ressource, puis une action |
-| Documentation | numéro + tirets | `05-base-de-donnees-postgresql.md` | Les fichiers s'affichent dans l'ordre de lecture |
+### 3.3 Modèles (`models/`)
+Fonctions d’accès aux données **réutilisées par plusieurs contrôleurs**. Le nom est au singulier, en PascalCase, comme l’entité.
 
-## 7.5 Fichiers à la racine
+| Fichier | Rôle |
+|---|---|
+| `Employee.js` | Requête de lecture d’un agent, filtrage des champs selon le niveau d’accès (`shapeEmployee`), identifiant SIGRH, historisation (`trackChanges`), listes des positions statutaires |
+| `Structure.js` | Sous-arbre (`subtreeIds`), ascendants (`ancestors`), institution d’une structure, types de structures |
+| `Workflow.js` | **Moteur de circuits** : valideurs de chaque étape, droits d’agir et de voir, création de demande, actions, effets appliqués au dossier |
 
-| Fichier | Pourquoi il existe | Comment savoir qu'il le faut |
-| --- | --- | --- |
-| `package.json` | Raccourcis pour lancer le serveur et le client depuis la racine (`npm run server`, `npm run client`, `npm run seed`) | Dès qu'on a deux sous-projets et qu'on est fatigué de faire `cd` |
-| `.gitignore` | Empêche d'envoyer sur GitHub `node_modules/` (très lourd, se réinstalle avec `npm install`), `dist/` (se reconstruit) et `.env` (**secrets**) | **Toujours**, avant le premier commit |
-| `README.md` | La page d'accueil du dépôt sur GitHub : présentation, installation, comptes de démo | Tout projet partagé |
-| `docs/` | Les 8 documents et la collection Postman (`docs/postman/`) | Pour pouvoir expliquer, tester et refaire le projet |
-| `.github/workflows/ci.yml` | Lance les tests et le build sur GitHub à chaque envoi | Dès qu'il y a des tests automatiques |
+### 3.4 Contrôleurs (`controllers/`)
+Un contrôleur par module ; chaque fonction exportée correspond à une route.
 
-## 7.6 Fichiers du serveur (`server/`)
+| Fichier | Module du cahier des charges |
+|---|---|
+| `authController.js` | Connexion, 2FA (enrôlement, vérification, désactivation), activation de compte, mot de passe |
+| `employeeController.js` | Dossier administratif : liste et recherche, création, modification, NIN, identité, biométrie, diplômes, sanctions et distinctions, pièces |
+| `structureController.js` | Référentiel des structures, propositions et validation centrale, postes budgétaires, corps |
+| `workflowController.js` | Paramétrage des circuits, dépôt et suivi des demandes, actions, récépissé, pièces |
+| `leaveController.js` | Types et soldes de congés, demandes d’absence (reliées au circuit CONGE), annulation |
+| `attendanceController.js` | Pointages (portail, biométrie via `recordPunch`), clôture de journée, rapport mensuel et absentéisme |
+| `trainingController.js` | Catalogue, sessions, inscriptions, certification |
+| `performanceController.js` | Évaluations annuelles et analyse de performance |
+| `soldeController.js` | Bulletins, simulation, import des états de la Solde, **contrôle de cohérence** |
+| `pilotageController.js` | Indicateurs consolidés, exports Excel et PDF, tableau de bord d’accueil |
+| `interopController.js` | Authentification par clé, points d’accès partenaires, gestion des clés, OpenAPI |
+| `importController.js` | Reprise des données existantes (analyse, validation par la DRH) |
+| `adminController.js` | Comptes et revue des droits, journal d’audit, notifications, annonces, calendrier |
 
-| Fichier | Pourquoi il existe |
-| --- | --- |
-| `package.json` / `package-lock.json` | Liste des dépendances et scripts. `package-lock.json` fige les versions exactes : tout le monde installe la même chose. Il est généré par npm, on ne l'écrit pas à la main |
-| `.env` / `.env.example` | Les réglages et secrets (non partagés) et leur modèle (partagé) |
-| `server.js` | Le point d'entrée : crée Express, branche les middlewares et les routes, crée les tables, démarre l'écoute. Tout commence ici |
-| `config/db.js` | La connexion à PostgreSQL, à un seul endroit. Si on change de base, on ne modifie que ce fichier |
-| `db/schema.sql` | La structure de la base (les 16 tables). En SQL pur, car c'est le langage de PostgreSQL ; on peut aussi l'exécuter directement dans pgAdmin |
-| `middleware/auth.js` | Vérifier le jeton (`protect`) et le rôle (`authorize`) : utilisé par presque toutes les routes |
-| `middleware/errorHandler.js` | Une seule façon de répondre aux erreurs, au lieu de répéter des `try/catch` dans chaque contrôleur |
-| `middleware/sanitize.js` | Nettoyer toutes les données reçues avant qu'elles n'arrivent aux contrôleurs |
-| `models/Employee.js` | Requêtes sur les employés réutilisées par plusieurs contrôleurs (`findEmployeeById`, `nextEmployeeCode`…) |
-| `models/User.js` | Recherche d'un compte par email ou par id |
-| `models/Project.js` | Requête complète d'un dossier, circuit applicable, prochaine référence |
-| `controllers/authController.js` | Inscription, connexion, profil, mot de passe (F1 à F5) |
-| `controllers/employeeController.js` | Fiches employés, recherche, libre-service (F6 à F11) |
-| `controllers/departmentController.js` | Départements (F12, F13) |
-| `controllers/attendanceController.js` | Pointage, corrections, clôture, rapport mensuel (F14 à F18) |
-| `controllers/leaveController.js` | Congés et soldes (F19 à F22) |
-| `controllers/payrollController.js` | Génération, liste, PDF et paiement des bulletins (F23 à F26) |
-| `controllers/performanceController.js` | Évaluations, objectifs, analyse (F27 à F30) |
-| `controllers/projectController.js` | Dossiers : paramétrage, enregistrement, circuit, pièces, récépissé (F31 à F40) |
-| `controllers/dashboardController.js` | Les chiffres du tableau de bord (F41) |
-| `controllers/reportController.js` | Les rapports (F42) |
-| `controllers/notificationController.js` | Notifications, annonces, calendrier (F43, F44) |
-| `controllers/userController.js` | Comptes et journal d'audit (F5, F45) |
-| `routes/*.js` | Un fichier par contrôleur : les adresses et les droits. `miscRoutes.js` regroupe les petites routes (tableau de bord, notifications, rapports, comptes) pour ne pas créer cinq fichiers de trois lignes |
-| `utils/AppError.js` | Lancer une erreur avec un code HTTP en une ligne (`assert`) |
-| `utils/dates.js` | Calculs de dates utilisés par les présences, les congés et la paie |
-| `utils/payroll.js` | Les **règles de calcul** de la paie, séparées du contrôleur : on peut les tester et les modifier sans toucher au reste |
-| `utils/payslipPdf.js` | La mise en page du bulletin PDF, séparée du calcul |
-| `utils/notify.js` | Créer des notifications (utilisé par la plupart des contrôleurs) |
-| `utils/audit.js` | Écrire dans le journal d'audit (utilisé partout) |
-| `utils/sanitize.js` | Petites fonctions : `pick` (garder les champs autorisés), `buildUpdate`, `toInt`, `pagination` |
-| `utils/migrate.js` | Exécuter `schema.sql` (appelé par `server.js` et par `seed.js`) |
-| `utils/runMigrate.js` | Le petit script de `npm run migrate` |
-| `utils/seed.js` | Les données de démonstration |
-| `tests/api.test.js` | Les tests automatiques de l'API |
+### 3.5 Routes (`routes/`)
+Associent une méthode HTTP et une URL à une fonction de contrôleur. Certaines routes de modules proches sont regroupées :
 
-**Pourquoi séparer routes et contrôleurs ?** Le fichier de routes se lit comme un **sommaire** : on voit en 15 lignes toutes les adresses d'un module et qui y a droit. Le contrôleur contient le « comment ».
+| Fichier | URLs |
+|---|---|
+| `authRoutes.js` | `/api/auth/*` (avec limitation du nombre de tentatives) |
+| `employeeRoutes.js` | `/api/employees/*` |
+| `structureRoutes.js` | `/api/structures/*` |
+| `workflowRoutes.js` | `/api/requests/*` et, via `typesRouter`, `/api/workflows/types` |
+| `timeRoutes.js` | « Temps de travail » : `/api/leaves/*` et `/api/attendance/*` |
+| `careerRoutes.js` | « Carrière » : `/api/trainings/*` et `/api/performance/*` |
+| `soldeRoutes.js` | `/api/solde/*` |
+| `interopRoutes.js` | `/api/interop/v1/*` (partenaires, clé d’API) et `/api/interop/clients` (DSI) |
+| `adminRoutes.js` | Routes transverses montées sur `/api` : dashboard, pilotage, corps, postes, reprise, notifications, annonces, calendrier, administration |
 
-**Pourquoi `utils/payroll.js` et pas tout dans le contrôleur ?** Le calcul de la paie est une règle métier pure : des chiffres entrent, des chiffres sortent, sans base de données ni HTTP. Isolé, il est facile à relire, à tester et à adapter au barème officiel.
+### 3.6 Utilitaires (`utils/`)
+Fonctions techniques sans lien avec une URL précise.
 
-## 7.7 Fichiers du client (`client/`)
+| Fichier | Rôle |
+|---|---|
+| `AppError.js` | Classe d’erreur avec code HTTP, et `assert(condition, message, statut)` |
+| `crypto.js` | Chiffrement AES-256-GCM, index aveugle HMAC, masquage, empreintes, **TOTP** |
+| `audit.js` | Écriture et vérification du **journal chaîné** |
+| `notify.js` | Envoi de notifications à des comptes, à un agent, ou à des profils d’une institution |
+| `alerts.js` | Contrôle horaire des délais des circuits |
+| `dates.js` | Validation stricte des dates, jours ouvrés, bornes d’un mois |
+| `csv.js` | Lecture des CSV (séparateur `;` ou `,`, guillemets, BOM Excel) |
+| `sanitize.js` | `pick` (liste blanche de champs), `buildUpdate`, `toInt`, `pagination` |
+| `etatCivil.js` | Connecteur au registre d’état civil (réel si `ETAT_CIVIL_URL`, sinon simulation) |
+| `payroll.js` | Calcul indicatif d’un bulletin (simulation) |
+| `payslipPdf.js` | Mise en page PDF du bulletin, aux couleurs nationales |
+| `migrate.js` / `runMigrate.js` | Application du schéma (au démarrage / en ligne de commande) |
+| `seed.js` | Données de démonstration nationales |
 
-| Fichier | Pourquoi il existe |
-| --- | --- |
-| `package.json` | Dépendances : react, react-dom, react-router-dom, lucide-react ; outils : vite, @vitejs/plugin-react |
-| `index.html` | La seule page HTML : React dessine tout dans `<div id="root">` |
-| `vite.config.js` | Active React dans Vite, définit le port et le proxy `/api` |
-| `vercel.json`, `public/_redirects` | En ligne, redirigent toutes les adresses (`/employees/5`) vers `index.html`, car c'est React qui gère la navigation (sinon, erreur 404 quand on recharge une page) |
-| `public/favicon.svg`, `public/manifest.webmanifest` | L'icône de l'onglet et la description pour installer le site comme une application |
-| `.env.example` | `VITE_API_URL` pour la mise en ligne |
-| `src/index.jsx` | Le point de départ : les fournisseurs de contexte, puis `App` |
-| `src/App.jsx` | La carte des adresses du site et leur protection |
-| `src/index.css` | Tout le style : couleurs (thème clair et sombre), mise en page, responsive, impression |
-| `src/services/api.js` | **Le seul fichier qui parle au serveur**. Si l'adresse du serveur change, on ne modifie que lui |
-| `src/context/AuthContext.jsx` | L'utilisateur connecté, disponible partout |
-| `src/context/ThemeContext.jsx` | Le mode sombre |
-| `src/context/ToastContext.jsx` | Les messages « Enregistré », « Erreur… » |
-| `src/utils/format.js` | Formats d'affichage (montants, dates) et libellés en français des valeurs de la base |
-| `src/utils/useFetch.js` | Le chargement de données, écrit une fois, utilisé par toutes les pages |
-| `src/components/ui.jsx` | Les petites briques d'interface regroupées dans un seul fichier, car chacune fait quelques lignes |
-| `src/components/Layout.jsx` | Le cadre commun : menu, barre du haut, cloche, bouton de thème |
-| `src/components/CheckInCard.jsx` | Le pointage, utilisé sur deux pages |
-| `src/components/EmployeeForm.jsx` | Formulaire employé, utilisé dans la liste **et** dans la fiche |
-| `src/components/ProjectForm.jsx` | Formulaire d'enregistrement d'un dossier |
-| `src/components/InsightsPanel.jsx` | Analyse de performance, utilisée sur trois pages (fiche employé, Performance, Mon espace) |
-| `src/dashboard/*.jsx` | Le tableau de bord, dans son propre dossier comme le demandait la structure du projet, car il a deux versions (Admin/RH et Agent) et un widget |
-| `src/pages/*.jsx` | Une page par entrée du menu, plus `Login`, `Register`, `EmployeeDetail` et `ProjectDetail` |
+### 3.7 Tests (`tests/sigrh.test.js`)
+Un seul fichier, organisé en blocs `describe` par thème (authentification, habilitations, dossier, circuits, formation, Solde, interopérabilité, référentiel, reprise, audit).
+Le suffixe `.test.js` permet à `node --test` de le trouver.
 
-**Page ou composant ?**
-- **Page** (`pages/`) : elle a sa propre adresse (`/leaves`) et apparaît dans `App.jsx`.
-- **Composant** (`components/`) : un morceau réutilisé, ou trop gros pour rester dans une page.
-- Un sous-composant utilisé par **une seule** page reste dans le fichier de cette page (par exemple `ApplyForm` dans `Leaves.jsx`, ou `ActionModal` dans `ProjectDetail.jsx`). On le sort dans `components/` le jour où une deuxième page en a besoin.
+## 4. L’interface (`client/`)
 
-## 7.8 Ordre de création conseillé
+### 4.1 Configuration
 
-On crée toujours un fichier **après** ceux dont il dépend (on ne peut pas importer un fichier qui n'existe pas encore).
+| Fichier | Rôle |
+|---|---|
+| `index.html` | Page unique qui charge l’application React ; titre, couleur de thème, favicon |
+| `vite.config.js` | Outil de développement ; **proxy** `/api` → `http://localhost:5002` pour éviter les problèmes de CORS en local |
+| `package.json` | React, React Router, lucide-react (icônes), Vite |
+| `.env.example` | `VITE_API_URL` (adresse de l’API en production), `VITE_CURRENCY` |
+| `vercel.json`, `public/_redirects` | Réécriture des routes vers `index.html` sur les hébergeurs (Vercel, Netlify) |
+| `public/favicon.svg`, `public/manifest.webmanifest` | Icône aux couleurs du drapeau ; application installable |
 
-```mermaid
-flowchart TB
-  subgraph Serveur
-    S1[.gitignore, package.json, .env] --> S2[config/db.js]
-    S2 --> S3[db/schema.sql + utils/migrate.js]
-    S3 --> S4[server.js avec /api/health]
-    S4 --> S5[utils/AppError.js + middleware/errorHandler.js + sanitize.js]
-    S5 --> S6[models/User.js + Employee.js]
-    S6 --> S7[middleware/auth.js]
-    S7 --> S8[authController + authRoutes]
-    S8 --> S9[departments, employees]
-    S9 --> S10[utils/dates, notify, audit]
-    S10 --> S11[attendance, leaves]
-    S11 --> S12[utils/payroll + payslipPdf + payroll]
-    S12 --> S13[performance]
-    S13 --> S14[models/Project + projects]
-    S14 --> S15[dashboard, reports, notifications, users]
-    S15 --> S16[utils/seed.js + tests]
-  end
-  subgraph Client
-    C1[vite.config.js + index.html] --> C2[services/api.js]
-    C2 --> C3[context/Auth, Theme, Toast]
-    C3 --> C4[utils/format + useFetch]
-    C4 --> C5[components/ui.jsx + index.css]
-    C5 --> C6[index.jsx + App.jsx]
-    C6 --> C7[Login, Register, Layout]
-    C7 --> C8[Dashboard + CheckInCard]
-    C8 --> C9[Departments, Employees]
-    C9 --> C10[Attendance, Leaves, Payroll]
-    C10 --> C11[Performance]
-    C11 --> C12[Projects, ProjectDetail, ProjectSettings]
-    C12 --> C13[Reports, Announcements, Users, Profile]
-  end
-  S16 --> C1
-```
+### 4.2 Socle (`src/`)
 
-**Pour chaque nouveau module**, la même routine :
-1. Table dans `schema.sql` → redémarrer → vérifier dans pgAdmin.
-2. Contrôleur → routes → branchement dans `server.js`.
-3. Test dans Thunder Client (document 6).
-4. Page React → lien dans `NAV` (`Layout.jsx`) → route dans `App.jsx`.
-5. Tester avec les trois profils.
-6. `git add .` puis `git commit -m "Module X"`.
+| Fichier | Rôle |
+|---|---|
+| `index.jsx` | Point d’entrée : monte `<App />` dans les fournisseurs (routeur, thème, notifications, authentification) |
+| `App.jsx` | Toutes les routes, et `RequireAuth` (connexion, 2FA obligatoire, profil autorisé) |
+| `index.css` | Toute la mise en forme : variables de couleur (vert `#00853F`, jaune `#FDEF42`, rouge `#E31B23`), mode sombre, responsive |
+| `services/api.js` | Seul endroit qui appelle l’API : jeton, erreurs, téléchargements |
+| `utils/useFetch.js` | Hook de chargement (`data`, `loading`, `error`, `reload`) |
+| `utils/format.js` | Libellés français (profils, positions, statuts…), formats de montants et de dates, export CSV |
+| `context/AuthContext.jsx` | Utilisateur connecté, connexion en deux étapes, raccourcis de profil |
+| `context/ThemeContext.jsx` | Mode clair ou sombre (mémorisé) |
+| `context/ToastContext.jsx` | Messages de confirmation et d’erreur |
 
-## 7.9 Arborescence complète
+### 4.3 Composants (`src/components/`)
+Morceaux d’interface réutilisés par plusieurs pages.
 
-```
-EMS/
-├── .github/workflows/ci.yml
-├── .gitignore
-├── package.json
-├── README.md
-├── docs/
-│   ├── 01-presentation-du-projet.md
-│   ├── 02-cahier-des-charges.md
-│   ├── 03-guide-realisation.md
-│   ├── 04-commandes-et-code-expliques.md
-│   ├── 05-base-de-donnees-postgresql.md
-│   ├── 06-api-rest.md
-│   ├── 07-pourquoi-chaque-fichier.md
-│   ├── 08-api-rest-postman.md
-│   └── postman/SIGRH-EMS.postman_collection.json
-├── server/
-│   ├── .env.example            (+ .env, non versionné)
-│   ├── package.json
-│   ├── server.js
-│   ├── config/db.js
-│   ├── db/schema.sql
-│   ├── middleware/  auth.js · errorHandler.js · sanitize.js
-│   ├── models/      Employee.js · Project.js · User.js
-│   ├── controllers/ attendance · auth · dashboard · department · employee · leave ·
-│   │                notification · payroll · performance · project · report · user  (…Controller.js)
-│   ├── routes/      attendance · auth · department · employee · leave · misc ·
-│   │                payroll · performance · project  (…Routes.js)
-│   ├── utils/       AppError · audit · dates · migrate · notify · payroll ·
-│   │                payslipPdf · runMigrate · sanitize · seed  (.js)
-│   └── tests/api.test.js
-└── client/
-    ├── index.html · vite.config.js · vercel.json · package.json · .env.example
-    ├── public/      favicon.svg · manifest.webmanifest · _redirects
-    └── src/
-        ├── index.jsx · App.jsx · index.css
-        ├── services/api.js
-        ├── context/    AuthContext · ThemeContext · ToastContext  (.jsx)
-        ├── utils/      format.js · useFetch.js
-        ├── components/ ui · Layout · CheckInCard · EmployeeForm · ProjectForm · InsightsPanel  (.jsx)
-        ├── dashboard/  Dashboard · AdminDashboard · EmployeeDashboard · AnnouncementsWidget  (.jsx)
-        └── pages/      Login · Register · Employees · EmployeeDetail · Departments · Attendance ·
-                        Leaves · Payroll · Performance · Projects · ProjectDetail · ProjectSettings ·
-                        Reports · Announcements · Users · Profile  (.jsx)
-```
+| Fichier | Rôle |
+|---|---|
+| `ui.jsx` | Boîte à outils : badges, modales, champs, cartes de statistiques, onglets, pagination, graphiques (barres, colonnes, anneau) |
+| `Layout.jsx` | Cadre : barre latérale filtrée selon le profil, bandeau « République du Sénégal », emblème, cloche de notifications |
+| `AgentForm.jsx` | Formulaire de création et de modification d’un dossier agent |
+| `RequestForm.jsx` | Formulaire de dépôt d’une demande ou d’initiation d’un acte (champs du `payload` selon le type) |
+| `Indicators.jsx` | Indicateurs de pilotage et **pyramide des âges** |
+| `InsightsPanel.jsx` | Analyse de performance d’un agent |
+| `CheckInCard.jsx` | Carte de pointage d’arrivée et de départ |
+| `MfaEnroll.jsx` | Enrôlement de la double authentification (QR code, confirmation) |
 
----
-Projet SIGRH (EMS) — documentation.
+### 4.4 Pages (`src/pages/`) et tableau de bord
+
+| Fichier | Écran |
+|---|---|
+| `Login.jsx` | Connexion (profils de démonstration), saisie du code 2FA |
+| `Activate.jsx` | Activation de son compte par l’agent |
+| `MfaSetup.jsx` | Activation imposée de la 2FA |
+| `dashboard/Dashboard.jsx` | Accueil adapté au profil |
+| `Agents.jsx` | Annuaire et liste des agents avec filtres |
+| `AgentDossier.jsx` | Dossier individuel (onglets) ; sert aussi pour « Mon dossier » |
+| `Structures.jsx` | Organigramme de l’État, fiche structure, propositions de modification |
+| `Requests.jsx` / `RequestDetail.jsx` | Liste des demandes / détail, circuit, historique, actions |
+| `Absences.jsx` | Congés, soldes, pointages, rapport mensuel |
+| `Trainings.jsx` | Catalogue et sessions de formation |
+| `Performance.jsx` | Évaluations |
+| `Solde.jsx` | Bulletins, simulation, imports et contrôle de cohérence |
+| `Pilotage.jsx` | Tableaux de bord RH et exports |
+| `Parametrage.jsx` | Éditeur de circuits et référentiel des corps |
+| `Interop.jsx` | Systèmes partenaires et clés d’API |
+| `Reprise.jsx` | Reprise des données existantes |
+| `Admin.jsx` | Habilitations et journal d’audit |
+| `Announcements.jsx` | Annonces et calendrier |
+| `Profile.jsx` | Mon compte : coordonnées, mot de passe, double authentification |
+
+## 5. Où ajouter quoi ?
+
+| Je veux… | Fichiers à modifier |
+|---|---|
+| Ajouter un champ au dossier agent | `db/schema.sql` (colonne), `employeeController.js` (liste `EDITABLE`), `models/Employee.js` (niveau d’accès), `AgentForm.jsx`, `AgentDossier.jsx` |
+| Ajouter un type d’acte | Aucun code si l’effet existe : écran **Circuits et référentiels**. Nouvel effet : `models/Workflow.js` (`EFFECT_VALIDATORS` et `EFFECTS`), contrainte `effect` du schéma, `RequestForm.jsx` |
+| Ajouter un indicateur de pilotage | `pilotageController.js` (`computeIndicators`, exports), `Indicators.jsx` |
+| Ouvrir un nouveau point d’accès partenaire | `interopController.js` (+ `SCOPES` et `openapi`), `interopRoutes.js` |
+| Ajouter une page | `pages/NouvellePage.jsx`, une route dans `App.jsx`, une entrée dans `NAV` de `Layout.jsx` |
