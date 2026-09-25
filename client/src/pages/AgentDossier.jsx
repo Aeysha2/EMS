@@ -99,7 +99,7 @@ export default function AgentDossier({ self = false }) {
           </div>
         </div>
         {canManage && (
-          <div className="action-col">
+          <div className="profile-actions">
             <button type="button" className="btn btn-primary" onClick={() => setModal('acte')}><ClipboardPlus size={16} /> Initier un acte</button>
             <button type="button" className="btn" onClick={() => setModal('edit')}><Pencil size={16} /> Corriger le dossier</button>
           </div>

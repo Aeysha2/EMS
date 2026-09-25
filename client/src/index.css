@@ -501,6 +501,7 @@ textarea { resize: vertical; }
 .text-success { color: var(--success); }
 .gap-sm { gap: 0.3rem !important; }
 .action-col { white-space: nowrap; text-align: right; width: 1%; }
+.profile-actions { display: flex; flex-direction: column; gap: 0.5rem; align-items: stretch; }
 .row-muted td { opacity: 0.55; }
 .chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
 .section-title { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin: 1.25rem 0 0.6rem; }
@@ -527,7 +528,7 @@ textarea { resize: vertical; }
 
 /* Organigramme */
 .tree-card { padding: 0.6rem; max-height: 75vh; overflow-y: auto; }
-.tree { list-style: none; margin: 0; padding: 0; }
+.tree, .tree ul { list-style: none; margin: 0; padding: 0; }
 .tree-row { display: flex; align-items: center; gap: 0.25rem; border-radius: 6px; padding-right: 6px; }
 .tree-row:hover { background: var(--surface-2); }
 .tree-row.active { background: var(--primary-soft); }
@@ -572,6 +573,7 @@ textarea { resize: vertical; }
   .split { grid-template-columns: 1fr; }
 }
 @media (max-width: 768px) {
+  .profile-actions { flex-direction: row; flex-wrap: wrap; width: 100%; }
   .goal-edit.three { grid-template-columns: 1fr 1fr auto; }
   .goal-edit.three input:first-child { grid-column: 1 / -1; }
   .dl { grid-template-columns: 1fr; gap: 0.1rem; }
